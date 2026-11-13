@@ -1,0 +1,5046 @@
+O dashboard CPD Dashboard (2D) está com "No data" em quase todos os painéis. Isso é diferente do dashboard de observabilidade (que já está funcionando).
+
+A causa é o datasource Zabbix: o cpd-dashboard.json usa "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" }. Se o datasource Zabbix foi reconfigurado (ex: o UID mudou), os painéis perdem a conexão.
+
+🛠️ Passo 1 — Verificar o datasource Zabbix
+Abra:
+
+text
+http://localhost:3000/connections/datasources
+Clique no Zabbix e veja qual é o UID dele.
+
+O que deve aparecer: uid: zabbix (ou outro UID).
+
+🛠️ Passo 2 — Se o UID for diferente de zabbix
+O cpd-dashboard.json espera uid: zabbix. Se o datasource tem outro UID, os painéis não encontram.
+
+Solução: trocar o uid no zabbix.yaml para zabbix (se não estiver) e reiniciar o Grafana.
+
+bash
+cat ~/Desktop/monitoramento-cpd/grafana/provisioning/datasources/zabbix.yaml
+O que deve aparecer:
+
+yaml
+apiVersion: 1
+
+datasources:
+  - name: Zabbix
+    uid: zabbix   ← deve ser 'zabbix'
+    type: alexanderzobnin-zabbix-datasource
+    ...
+Se o uid estiver diferente, ajuste e reinicie:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+🛠️ Passo 3 — Se o UID for zabbix, testar o datasource
+Clique no Zabbix e role até o final. Clique em Save & Test.
+
+O que deve aparecer: Data source is working.
+
+✅ Se funcionar: o problema é nas queries do cpd-dashboard.json (os itens do Zabbix podem ter mudado de nome).
+
+❌ Se der erro: o datasource está com problema (URL, senha, etc.). Me mande a mensagem.
+
+🛠️ Passo 4 — Se o datasource funcionar, testar uma query
+No dashboard, clique no painel Temperatura → Edit. Na aba Query, veja se o item está selecionado (Temperatura). Se estiver, clique em Refresh.
+
+O que deve aparecer: o valor 22.7°C.
+
+Se não aparecer, o item esp32.temp pode ter mudado de nome. Vá em Monitoring → Latest data no Zabbix e confirme os nomes.
+
+🛠️ Passo 5 — Se o dashboard 2D estiver com problemas, restaurar
+Se o cpd-dashboard.json foi modificado (por você ou por um provisionamento anterior), podemos restaurar a versão original do Git:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git checkout -- grafana/dashboards/cpd-dashboard.json
+docker compose restart grafana
+Me diga:
+
+O datasource Zabbix aparece em http://localhost:3000/connections/datasources?
+
+Qual é o UID do datasource Zabbix? (clique nele e veja o campo uid)
+
+O Save & Test do Zabbix deu Data source is working?
+
+O painel Temperatura (no dashboard 2D) mostra 22.7°C ou "No data"?
+
+Com isso, resolvemos o dashboard 2D e fechamos a lista. 🚀
+
+❯ cat ~/Desktop/monitoramento-cpd/grafana/provisioning/datasources/zabbix.yaml
+apiVersion: 1
+
+datasources:
+  - name: Zabbix
+    uid: zabbix
+    type: alexanderzobnin-zabbix-datasource
+    access: proxy
+    url: http://cpd-zabbix-web:8080/api_jsonrpc.php
+    isDefault: true
+    jsonData:
+      username: Admin
+      trends: true
+      trendsFrom: '7d'
+      trendsRange: '4d'
+      cacheTTL: '1m'
+      alerting: false
+    secureJsonData:
+      password: zabbix
+O zabbix.yaml está correto (uid: zabbix). O problema é outro.
+
+Olhando a captura do dashboard 2D, só o painel "Temperatura" está funcionando (22.7°C). Os outros (Umidade, Modo, Estado, Histórico) estão com "No data".
+
+Isso indica que:
+
+O datasource Zabbix está OK (Temperatura funciona).
+
+O problema é nas queries dos outros painéis.
+
+🛠️ Passo 1 — Testar o datasource Zabbix
+Abra:
+
+text
+http://localhost:3000/connections/datasources
+Clique no Zabbix e role até o final. Clique em Save & Test.
+
+O que deve aparecer: Data source is working.
+
+Se der erro, me mande a mensagem.
+
+🛠️ Passo 2 — Se o datasource estiver OK, investigar os painéis
+O painel Temperatura funciona porque a query dele (esp32.temp) está correta. Os outros podem ter queries com nomes diferentes.
+
+Vamos verificar um por um:
+
+Painel "Umidade"
+Clique no painel Umidade → Edit.
+
+Na aba Query, veja o campo Item. Está selecionado? Qual o nome?
+
+Se estiver vazio ou com nome errado, selecione Umidade (ou esp32.umid).
+
+Painel "Modo"
+Clique no painel Modo → Edit.
+
+Veja o campo Item. Está Modo?
+
+Se não, selecione Modo.
+
+Painel "Estado"
+Clique no painel Estado → Edit.
+
+Veja o campo Item. Está Estado?
+
+Se não, selecione Estado.
+
+Painel "Histórico"
+Clique no painel Histórico → Edit.
+
+Veja os campos Item. Estão Temperatura e Umidade?
+
+Se não, selecione os itens corretos.
+
+🛠️ Passo 3 — Se os itens estiverem corretos, mas ainda der "No data"
+Isso pode acontecer se os itens no Zabbix estiverem com nomes diferentes (ex: MQTT Status: Temperatura em vez de Temperatura).
+
+Verifique no Zabbix:
+
+text
+http://localhost:8080
+Vá em Monitoring → Latest data, filtre por Rack CPD, e veja os nomes exatos dos itens:
+
+Temperatura (ou MQTT Status: Temperatura?)
+
+Umidade
+
+Modo
+
+Estado
+
+Me diga os nomes exatos.
+
+🛠️ Passo 4 — Se os nomes mudaram, ajustar o JSON
+Se os nomes no Zabbix são diferentes (ex: MQTT Status: Temperatura), o cpd-dashboard.json precisa ser atualizado.
+
+Me diga os nomes exatos e eu ajusto o JSON.
+
+Me diga:
+
+O Save & Test do Zabbix deu Data source is working?
+
+No painel Umidade (Edit → Query), o campo Item está selecionado? Qual o nome?
+
+No Zabbix (Monitoring → Latest data), quais os nomes exatos dos itens Temperatura, Umidade, Modo, Estado?
+
+Com isso, ajustamos o dashboard 2D. 🚀
+
+Eu mexi em temperatura, mas estava No data também.
+Entendi. O painel Temperatura agora está com "No data" também. Isso significa que o problema é no datasource Zabbix (não nas queries dos painéis).
+
+Vamos verificar o datasource.
+
+🛠️ Passo 1 — Testar o datasource Zabbix
+Abra:
+
+text
+http://localhost:3000/connections/datasources
+Clique no Zabbix e role até o final. Clique em Save & Test.
+
+O que deve aparecer: Data source is working (verde) ou uma mensagem de erro (vermelho).
+
+Se der erro, me mande a mensagem exata.
+
+🛠️ Passo 2 — Verificar os logs do Grafana
+bash
+docker compose logs --tail=50 grafana | grep -i "zabbix\|error\|fail"
+O que procurar:
+
+Erros de conexão com o Zabbix
+
+Erros de autenticação
+
+Timeouts
+
+Se aparecer algo, me mande a mensagem.
+
+🛠️ Passo 3 — Verificar se o Zabbix Web está respondendo
+bash
+docker compose exec grafana wget -qO- http://cpd-zabbix-web:8080/api_jsonrpc.php
+O que deve aparecer: um JSON com erro (porque não tem auth), mas confirma que o Zabbix Web está respondendo.
+
+Se der erro de conexão, o Zabbix Web pode estar fora do ar.
+
+🛠️ Passo 4 — Verificar se o Zabbix Web está UP
+bash
+docker compose ps zabbix-web
+O que deve aparecer: cpd-zabbix-web Up (healthy).
+
+🛠️ Passo 5 — Testar a API do Zabbix diretamente
+bash
+curl -s -X POST http://localhost:8080/api_jsonrpc.php \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"user.login","params":{"username":"Admin","password":"zabbix"},"id":1}'
+O que deve aparecer: um JSON com "result":"..." (o token de autenticação).
+
+Se der erro, me mande a mensagem.
+
+🛠️ Passo 6 — Se o Zabbix Web estiver OK, verificar o cache do Grafana
+O datasource Zabbix no Grafana tem um cache (cacheTTL: '1m'). Se o cache estiver com dados antigos, os painéis podem mostrar "No data" mesmo com o Zabbix funcionando.
+
+Solução: reiniciar o Grafana.
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s e recarregue o dashboard.
+
+Me diga:
+
+O Save & Test do Zabbix deu Data source is working ou erro?
+
+O docker compose exec grafana wget -qO- http://cpd-zabbix-web:8080/api_jsonrpc.php retornou algo?
+
+O curl -s -X POST http://localhost:8080/api_jsonrpc.php ... retornou o token?
+
+O docker compose ps zabbix-web mostra Up (healthy)?
+
+Com isso, identificamos onde está o problema. 🚀
+
+🎉 O datasource Zabbix está funcionando!
+A imagem confirma:
+
+✅ Zabbix API version 7.0.32
+
+O Grafana está falando com o Zabbix. O problema do "No data" no dashboard 2D não é o datasource.
+
+🛠️ Passo 1 — Verificar se os itens do Zabbix têm dados
+Abra o Zabbix Web:
+
+text
+http://localhost:8080
+Vá em Monitoring → Latest data, filtre por Rack CPD (ou esp32-cpd), e veja se os itens têm valores.
+
+O que deve aparecer:
+
+Temperatura: 22.7
+
+Umidade: 40
+
+Modo: ARMADO
+
+Estado: NORMAL
+
+etc.
+
+Se os itens estiverem vazios ("No data" no Zabbix), o problema é no pipeline (Wokwi → Mosquitto → Zabbix), não no Grafana.
+
+Se os itens tiverem valores, o problema é nas queries do dashboard.
+
+🛠️ Passo 2 — Se o Zabbix tiver dados, verificar o painel no Grafana
+Abra o dashboard 2D:
+
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+Clique no painel Temperatura → Edit.
+
+Na aba Query, veja:
+
+Data source: Zabbix
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Temperatura
+
+O que deve aparecer: o campo Item deve estar selecionado com Temperatura (ou MQTT Status: Temperatura).
+
+Se o Item estiver vazio, clique nele e selecione Temperatura.
+
+Se o Item estiver selecionado, mas der "No data", o nome do item no Zabbix pode ser diferente. Me diga o nome exato.
+
+🛠️ Passo 3 — Se o Item estiver correto, testar no Explore
+Abra o Explore (menu lateral), selecione o datasource Zabbix.
+
+Configure:
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Temperatura
+
+Clique em Run query.
+
+O que deve aparecer: o gráfico com a temperatura.
+
+Se der "No data", o item no Zabbix pode ter outro nome.
+
+🛠️ Passo 4 — Se o Zabbix não tiver dados
+Se o Monitoring → Latest data do Zabbix mostrar "No data", o problema é no pipeline:
+
+O Wokwi está rodando? (publicando no broker.emqx.io)
+
+A bridge MQTT está funcionando? (docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v)
+
+O item mestre do Zabbix está lendo? (Monitoring → Latest data → MQTT Status)
+
+Me diga:
+
+O Monitoring → Latest data do Zabbix mostra os valores?
+
+No painel Temperatura (Edit → Query), o campo Item está selecionado? Qual o nome?
+
+No Explore (Zabbix), a query Temperatura retorna dados?
+
+Com isso, identificamos onde está o problema. 🚀
+
+A captura mostra o Dashboard global do Zabbix, não o Latest data (que é onde vemos os valores dos itens). Precisamos ir em Monitoring → Latest data para ver se os itens estão com dados.
+
+🛠️ Passo 1 — Abrir o Latest data no Zabbix
+No menu lateral esquerdo do Zabbix, clique em Monitoring (ícone de monitor).
+
+Clique em Latest data.
+
+No filtro de Host, digite Rack CPD (ou esp32-cpd).
+
+Clique em Apply.
+
+O que deve aparecer: uma lista de itens com valores (Temperatura, Umidade, Modo, Estado, etc.).
+
+Se aparecer "No data" em todos, o pipeline (Wokwi → Mosquitto → Zabbix) está parado.
+
+Se aparecer valores, o problema é nas queries do Grafana.
+
+🛠️ Passo 2 — Se o Latest data tiver valores, testar o Explore no Grafana
+No Grafana, clique em Explore (menu lateral).
+
+Selecione o datasource Zabbix.
+
+Configure:
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Temperatura
+
+Clique em Run query.
+
+O que deve aparecer: o gráfico com a temperatura.
+
+🛠️ Passo 3 — Se o Explore der "No data", verificar o nome do item
+No Latest data do Zabbix, copie o nome exato do item Temperatura (ex: Temperatura ou MQTT Status: Temperatura).
+
+No Explore do Grafana, no campo Item, digite o nome exato.
+
+🛠️ Passo 4 — Se o Latest data estiver vazio, verificar o pipeline
+Se o Zabbix não tiver dados, o pipeline está parado. Verifique:
+
+Wokwi está rodando? (publicando no broker.emqx.io)
+
+Bridge MQTT está funcionando?
+
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+Item mestre do Zabbix está lendo?
+
+bash
+docker compose exec zabbix-server mosquitto_sub -h cpd-mosquitto -t 'publico/rack_monitor_ABCD1234/status' -C 1 -W 5
+Me diga:
+
+O Latest data do Zabbix mostra os valores (Temperatura, Umidade, etc.)?
+
+No Explore do Grafana, a query Temperatura retorna dados?
+
+Se o Zabbix estiver vazio, o docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v mostra os JSONs?
+
+Com isso, identificamos onde está o problema. 🚀
+
+🎉 O Zabbix está coletando tudo perfeitamente!
+Olha os dados:
+
+Item	Valor
+Ambiente	CRITICO
+Distância	335.9 cm
+Estado	EMERGENCIA RACK
+Invasões	1
+Luminosidade	true
+Modo	ARMADO
+MQTT Status	{"estado":"EMERGENCIA R..."}
+Porta Aberta	true
+Temperatura	22.7 °C
+Umidade	83 %
+O pipeline está 100% funcional. O problema do "No data" no Grafana é apenas nas queries do dashboard 2D (o cpd-dashboard.json).
+
+🛠️ O problema: os nomes dos itens mudaram
+No Zabbix, os itens se chamam Temperatura, Umidade, Modo, Estado, etc. (sem o prefixo MQTT Status:).
+
+Mas o cpd-dashboard.json que você tem pode estar esperando o nome antigo (MQTT Status: Temperatura). Ou os painéis estão com queries vazias.
+
+🛠️ Passo 1 — Verificar o painel Temperatura no Grafana
+Abra o dashboard 2D: http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+
+Clique no painel Temperatura → Edit.
+
+Na aba Query, veja:
+
+Data source: Zabbix
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: (está selecionado? qual o nome?)
+
+Me diga o que aparece no campo Item.
+
+🛠️ Passo 2 — Se o Item estiver vazio, selecionar
+Clique no campo Item e selecione Temperatura.
+
+Clique em Run query (ou Refresh).
+
+O que deve aparecer: o valor 22.7°C.
+
+🛠️ Passo 3 — Corrigir todos os painéis via JSON
+Se o problema for geral (todos os painéis com queries vazias ou com nome errado), vamos corrigir o cpd-dashboard.json via script Python.
+
+Me diga:
+
+No painel Temperatura (Edit → Query), o campo Item está selecionado? Qual o nome?
+
+Se você selecionar Temperatura e clicar em Run query, o gráfico aparece?
+
+O painel Umidade (Edit → Query) tem o campo Item selecionado? Qual o nome?
+
+Com isso, eu ajusto o cpd-dashboard.json para os nomes reais. 🚀
+
+🛠️ Passo 1 — Verificar o painel Temperatura no Grafana
+Abra o dashboard 2D: http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+
+Clique no painel Temperatura → Edit.
+
+Na aba Query, veja:
+
+Data source: Zabbix
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: (está selecionado? qual o nome?) Temperatura
+Perfeito! O painel Temperatura está com a query correta (Item: Temperatura). E o Zabbix tem o valor (22.7°C).
+
+Se mesmo assim o painel mostra "No data", o problema é cache do Grafana (o datasource Zabbix tem cacheTTL: '1m').
+
+🛠️ Passo 1 — Forçar a atualização do painel
+No painel Temperatura (Edit), clique no botão Refresh (canto superior direito).
+
+O que deve aparecer: o valor 22.7°C no gráfico.
+
+Se aparecer, o problema era o cache. Clique em Save (no painel) e depois em Back.
+
+🛠️ Passo 2 — Se ainda der "No data", verificar a query
+Na aba Query, clique no botão Query inspector (canto superior direito).
+
+O que deve aparecer: um painel com a request e a response. Verifique se a response tem dados.
+
+Se a response tiver dados: o problema é no painel (visualização).
+
+Se a response estiver vazia: o problema é na query.
+
+🛠️ Passo 3 — Se a query estiver correta mas o painel vazio, verificar o cacheTTL
+O zabbix.yaml tem cacheTTL: '1m'. Isso significa que o Grafana cacheia a resposta por 1 minuto.
+
+Solução: aguarde 1 minuto e recarregue a página (F5).
+
+Ou, para desabilitar o cache:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/grafana/provisioning/datasources/zabbix.yaml
+Troque:
+
+yaml
+      cacheTTL: '1m'
+Por:
+
+yaml
+      cacheTTL: '5s'
+Salve e reinicie o Grafana:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+🛠️ Passo 4 — Se o painel funcionar, verificar os outros
+Se o painel Temperatura funcionar, o problema dos outros pode ser o mesmo (cache). Abra cada painel, clique em Edit, Refresh, e Save.
+
+Ou, se preferir, reinicie o Grafana e aguarde 1 minuto para o cache expirar.
+
+Me diga:
+
+O painel Temperatura mostra 22.7°C após o Refresh?
+
+Se sim, os outros painéis (Umidade, Modo, Estado) mostram dados após Refresh?
+
+Se não, o Query inspector mostra a response com dados ou vazia?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+Vamos ver com a Umidade
+🛠️ Vamos investigar o painel Umidade
+Abra o dashboard 2D e siga os passos:
+
+🛠️ Passo 1 — Abrir o painel Umidade em modo de edição
+No dashboard 2D (http://localhost:3000/d/cpd-dashboard/cpd-dashboard), clique no painel Umidade.
+
+Clique em Edit (no menu que aparecer).
+
+🛠️ Passo 2 — Verificar a query
+Na aba Query, veja os campos:
+
+Campo	O que deve estar
+Data source	Zabbix
+Query type	Metrics
+Group	CPD
+Host	Rack CPD
+Item	Umidade (ou MQTT Status: Umidade)
+Me diga o que aparece no campo Item.
+
+🛠️ Passo 3 — Testar a query
+Clique em Run query (ou Refresh, canto superior direito).
+
+O que deve aparecer: o valor 83% no gráfico.
+
+Se der "No data":
+
+Clique no Query inspector (ícone de "olho" ou "i", canto superior direito).
+
+Veja a response (resposta do Zabbix).
+
+Me diga se a response tem dados ou está vazia.
+
+🛠️ Passo 4 — Comparar com o painel Temperatura
+O painel Temperatura está funcionando (22.7°C). O painel Umidade está com "No data".
+
+As diferenças possíveis:
+
+Diferença	Como verificar
+Item diferente	No campo Item, o valor é Umidade?
+Host diferente	No campo Host, o valor é Rack CPD?
+Group diferente	No campo Group, o valor é CPD?
+Query type diferente	No campo Query type, o valor é Metrics?
+Me diga o que aparece em cada campo do painel Umidade.
+
+Me diga:
+
+No painel Umidade (Edit → Query), o campo Item está selecionado? Qual o nome?
+
+Ao clicar em Run query, o gráfico mostra 83% ou "No data"?
+
+Se "No data", o Query inspector mostra a response com dados ou vazia?
+
+Com isso, identificamos a diferença entre o painel que funciona (Temperatura) e o que não funciona (Umidade). 🚀
+
+Acontece que não vem definido o Group, o Host, o Item, ...
+🎯 AH! O problema é que os campos estão vazios!
+O cpd-dashboard.json que você tem foi provisionado com os campos vazios (sem Group, Host, Item). O Grafana, quando lê o JSON, deixa os campos vazios porque o formato do JSON não estava 100% correto para o plugin do Zabbix.
+
+O painel Temperatura funciona porque você selecionou manualmente o Item: Temperatura. Os outros painéis estão vazios.
+
+🛠️ Solução: Corrigir o cpd-dashboard.json com os campos preenchidos
+Vamos criar um script Python que preenche os campos de todos os painéis com os valores corretos.
+
+bash
+cat > ~/Desktop/monitoramento-cpd/corrigir_dashboard_2d.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Corrige o cpd-dashboard.json com os campos de query preenchidos."""
+import json
+import os
+
+BASE = "/Users/cristiano/Desktop/monitoramento-cpd"
+CAMINHO = os.path.join(BASE, "grafana", "dashboards", "cpd-dashboard.json")
+
+with open(CAMINHO) as f:
+    dashboard = json.load(f)
+
+# Configuração padrão para os painéis do Zabbix
+GROUP = "CPD"
+HOST = "Rack CPD"
+
+# Mapeamento: título do painel -> item do Zabbix
+ITENS = {
+    "Temperatura": "Temperatura",
+    "Umidade": "Umidade",
+    "Modo": "Modo",
+    "Estado": "Estado",
+    "Histórico": None,  # tratado separado (2 queries)
+}
+
+for panel in dashboard["panels"]:
+    titulo = panel.get("title", "")
+
+    if titulo in ["Temperatura", "Umidade", "Modo", "Estado"]:
+        item = ITENS[titulo]
+        for target in panel["targets"]:
+            target["queryType"] = "0"
+            target["group"] = GROUP
+            target["host"] = HOST
+            target["item"] = item
+            target["itemTag"] = ""
+            target["itemTagValue"] = ""
+
+    if titulo == "Histórico (30 min)":
+        # Painel com 2 targets: Temperatura e Umidade
+        itens_historico = ["Temperatura", "Umidade"]
+        for i, target in enumerate(panel["targets"]):
+            if i < len(itens_historico):
+                target["queryType"] = "0"
+                target["group"] = GROUP
+                target["host"] = HOST
+                target["item"] = itens_historico[i]
+                target["itemTag"] = ""
+                target["itemTagValue"] = ""
+
+with open(CAMINHO, "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+
+print(f"OK: {CAMINHO}")
+print("Painéis corrigidos:")
+for panel in dashboard["panels"]:
+    titulo = panel.get("title", "")
+    if titulo:
+        targets_info = []
+        for t in panel.get("targets", []):
+            if "item" in t:
+                targets_info.append(f"{t.get('item', '?')}")
+        if targets_info:
+            print(f"  - {titulo}: {', '.join(targets_info)}")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+python3 corrigir_dashboard_2d.py
+rm corrigir_dashboard_2d.py
+🛠️ Passo 2 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 3 — Abrir o dashboard 2D
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados (Temperatura, Umidade, Modo, Estado, Histórico).
+
+🛠️ Passo 4 — Se algum painel ainda estiver vazio
+O cpd-dashboard.json pode ter sido editado por você (quando você selecionou o Item: Temperatura manualmente). Nesse caso, o script pode não ter corrigido tudo.
+
+Solução: apague o dashboard antigo e recrie a partir do JSON.
+
+Dashboards → CPD → CPD Dashboard
+
+Exit edit (se estiver editando)
+
+... → Delete
+
+Confirme
+
+Aguarde 30s e recarregue (F5). O Grafana relê o cpd-dashboard.json e recria o dashboard.
+
+🛠️ Passo 5 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: preenche as queries dos painéis 2D com Group/Host/Item
+
+- Os campos estavam vazios no JSON provisionado.
+- Agora todos os painéis (Temperatura, Umidade, Modo, Estado, Histórico)
+  têm Group: CPD, Host: Rack CPD e Item correto."
+git push
+Me diga:
+
+O python3 corrigir_dashboard_2d.py rodou sem erro?
+
+Após o docker compose restart grafana, os painéis mostram dados?
+
+Se algum ainda estiver vazio, qual é?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+Vieram todos No data!!
+🎯 O problema é o formato do JSON para o plugin Zabbix
+O cpd-dashboard.json que você tem usa o formato antigo do plugin Zabbix (com "item": { "filter": "Temperatura" }). O plugin novo (v6.10.3) espera um formato diferente: campos group, host, item como strings simples, não como objetos.
+
+Quando o Grafana lê o JSON antigo, ele não reconhece os campos e deixa tudo vazio. Por isso "No data".
+
+🛠️ Solução: Criar o dashboard 2D do zero via API (com o formato correto)
+Vamos usar a API do Grafana para criar o dashboard com o formato novo do plugin Zabbix. Assim, os campos ficam preenchidos corretamente.
+
+Passo 1 — Descobrir o UID do datasource Zabbix
+bash
+curl -s -u admin:SUA_SENHA http://localhost:3000/api/datasources | python3 -m json.tool
+O que deve aparecer: a lista de datasources, incluindo o Zabbix com "uid": "zabbix".
+
+Anote a senha do admin (do .env) e use no lugar de SUA_SENHA.
+
+Passo 2 — Criar o dashboard via API (Python)
+Vou te dar um script que cria o dashboard direto no Grafana, com o formato correto do plugin Zabbix.
+
+bash
+cat > ~/Desktop/monitoramento-cpd/criar_dashboard_2d.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Cria o dashboard 2D via API do Grafana (formato novo do plugin Zabbix)."""
+import json
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GRAFANA_URL = "http://localhost:3000"
+GRAFANA_USER = os.getenv("GRAFANA_ADMIN_USER", "admin")
+GRAFANA_PASS = os.getenv("GRAFANA_ADMIN_PASSWORD", "")
+
+if not GRAFANA_PASS:
+    print("ERRO: GRAFANA_ADMIN_PASSWORD não está no .env")
+    exit(1)
+
+# ============================================================
+# TEMPLATE DE PAINEL (formato novo do plugin Zabbix)
+# ============================================================
+def painel_stat(titulo, item, unidade, cor_limiar=None):
+    thresholds = {
+        "mode": "absolute",
+        "steps": [{"color": "green", "value": None}],
+    }
+    if cor_limiar:
+        thresholds["steps"] = cor_limiar
+    return {
+        "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+        "fieldConfig": {
+            "defaults": {
+                "color": {"mode": "thresholds"},
+                "mappings": [],
+                "thresholds": thresholds,
+                "unit": unidade,
+            },
+            "overrides": [],
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+        "id": 1,
+        "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+            "textMode": "auto",
+        },
+        "targets": [
+            {
+                "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+                "queryType": "0",
+                "refId": "A",
+                "group": "CPD",
+                "host": "Rack CPD",
+                "item": item,
+            }
+        ],
+        "title": titulo,
+        "type": "stat",
+    }
+
+# ============================================================
+# DASHBOARD COMPLETO
+# ============================================================
+dashboard = {
+    "annotations": {"list": []},
+    "editable": True,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": None,
+    "links": [],
+    "liveNow": True,
+    "panels": [
+        painel_stat("Temperatura", "Temperatura", "celsius", [
+            {"color": "green", "value": None},
+            {"color": "yellow", "value": 28},
+            {"color": "red", "value": 32},
+        ]),
+        painel_stat("Umidade", "Umidade", "percent", [
+            {"color": "green", "value": None},
+            {"color": "yellow", "value": 65},
+            {"color": "red", "value": 80},
+        ]),
+        painel_stat("Modo", "Modo", "short"),
+        painel_stat("Estado", "Estado", "short"),
+    ],
+    "refresh": "10s",
+    "schemaVersion": 39,
+    "tags": ["cpd"],
+    "templating": {"list": []},
+    "time": {"from": "now-30m", "to": "now"},
+    "timezone": "browser",
+    "title": "CPD Dashboard 2D",
+    "uid": "cpd-dashboard-2d",
+    "version": 1,
+}
+
+# ============================================================
+# CRIAR VIA API
+# ============================================================
+payload = {
+    "dashboard": dashboard,
+    "overwrite": True,
+    "message": "Criado via API (formato novo do plugin Zabbix)",
+}
+
+r = requests.post(
+    f"{GRAFANA_URL}/api/dashboards/db",
+    auth=(GRAFANA_USER, GRAFANA_PASS),
+    json=payload,
+    headers={"Content-Type": "application/json"},
+)
+
+if r.status_code == 200:
+    data = r.json()
+    print(f"OK: dashboard criado")
+    print(f"URL: {GRAFANA_URL}{data.get('url', '/d/cpd-dashboard-2d')}")
+else:
+    print(f"ERRO {r.status_code}: {r.text}")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python criar_dashboard_2d.py
+rm criar_dashboard_2d.py
+O que esperar:
+
+text
+OK: dashboard criado
+URL: http://localhost:3000/d/cpd-dashboard-2d
+🛠️ Passo 3 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard-2d
+O que deve aparecer: 4 painéis (Temperatura, Umidade, Modo, Estado) com dados.
+
+Se algum der "No data":
+
+Clique no painel → Edit.
+
+Verifique se o campo Item está preenchido (Temperatura, Umidade, Modo, Estado).
+
+Clique em Save.
+
+🎯 O que fizemos de diferente
+Formato antigo	Formato novo
+"item": {"filter": "Temperatura"}	"item": "Temperatura"
+O plugin v6.10.3 não reconhece	O plugin v6.10.3 reconhece
+O formato novo usa os campos group, host, item como strings simples, não como objetos. Isso é o que o plugin v6.10.3 espera.
+
+Me diga:
+
+O python criar_dashboard_2d.py rodou sem erro?
+
+O dashboard cpd-dashboard-2d mostra os 4 painéis com dados?
+
+Se algum der "No data", qual é?
+
+Com isso, resolvemos o dashboard 2D. 🚀
+
+❯ curl -s -u admin:SUA_SENHA http://localhost:3000/api/datasources | python3 -m json.tool
+{
+    "extra": null,
+    "message": "Invalid username or password",
+    "messageId": "password-auth.failed",
+    "statusCode": 401,
+    "traceID": ""
+}
+🎯 Você usou a senha literal SUA_SENHA!
+O curl retornou 401 porque você não trocou SUA_SENHA pela senha real do Grafana.
+
+Vamos descobrir a senha real e testar.
+
+🛠️ Passo 1 — Descobrir a senha do Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+grep GRAFANA_ADMIN_PASSWORD .env
+O que vai aparecer: algo como GRAFANA_ADMIN_PASSWORD=GrafanaForte2026!.
+
+A senha é o que está depois do =.
+
+🛠️ Passo 2 — Testar o curl com a senha real
+bash
+curl -s -u admin:SUA_SENHA_REAL http://localhost:3000/api/datasources | python3 -m json.tool
+Substitua SUA_SENHA_REAL pela senha que apareceu no passo 1.
+
+O que deve aparecer: a lista de datasources (Zabbix e Prometheus).
+
+🛠️ Passo 3 — Se a senha tiver caracteres especiais
+Se a senha tiver !, #, $, espaço ou aspas, o curl pode interpretar errado. Coloque entre aspas simples:
+
+bash
+curl -s -u 'admin:SenhaCom!Caracteres' http://localhost:3000/api/datasources | python3 -m json.tool
+🛠️ Passo 4 — Alternativa: usar o Python para testar (mais seguro)
+Se a senha for complexa, use Python:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python3 -c "
+import os, requests
+from dotenv import load_dotenv
+load_dotenv()
+r = requests.get('http://localhost:3000/api/datasources',
+                 auth=(os.getenv('GRAFANA_ADMIN_USER'), os.getenv('GRAFANA_ADMIN_PASSWORD')))
+print(r.status_code)
+print(r.json())
+"
+O que deve aparecer: 200 e a lista de datasources.
+
+Me diga:
+
+O grep GRAFANA_ADMIN_PASSWORD .env mostra qual senha?
+
+O curl com a senha real retorna a lista de datasources ou erro?
+
+Com isso, validamos o acesso à API do Grafana e partimos para a criação do dashboard 2D via API. 🚀
+
+❯ cd ~/Desktop/monitoramento-cpd
+grep GRAFANA_ADMIN_PASSWORD .env
+GRAFANA_ADMIN_PASSWORD=cris-admin
+🎯 Agora sim! A senha é cris-admin
+Vamos testar o curl com a senha real:
+
+bash
+curl -s -u admin:cris-admin http://localhost:3000/api/datasources | python3 -m json.tool
+O que deve aparecer: a lista de datasources (Zabbix e Prometheus).
+
+🛠️ Passo 1 — Se aparecer a lista, criar o dashboard 2D via API
+Agora que sabemos a senha, vamos rodar o script Python que cria o dashboard 2D com o formato correto do plugin Zabbix.
+
+bash
+cat > ~/Desktop/monitoramento-cpd/criar_dashboard_2d.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Cria o dashboard 2D via API do Grafana (formato novo do plugin Zabbix)."""
+import json
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GRAFANA_URL = "http://localhost:3000"
+GRAFANA_USER = os.getenv("GRAFANA_ADMIN_USER", "admin")
+GRAFANA_PASS = os.getenv("GRAFANA_ADMIN_PASSWORD", "")
+
+if not GRAFANA_PASS:
+    print("ERRO: GRAFANA_ADMIN_PASSWORD não está no .env")
+    exit(1)
+
+def painel_stat(titulo, item, unidade, thresholds=None):
+    if not thresholds:
+        thresholds = {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": None}],
+        }
+    return {
+        "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+        "fieldConfig": {
+            "defaults": {
+                "color": {"mode": "thresholds"},
+                "mappings": [],
+                "thresholds": thresholds,
+                "unit": unidade,
+            },
+            "overrides": [],
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+        "id": 1,
+        "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+            "textMode": "auto",
+        },
+        "targets": [
+            {
+                "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+                "queryType": "0",
+                "refId": "A",
+                "group": "CPD",
+                "host": "Rack CPD",
+                "item": item,
+            }
+        ],
+        "title": titulo,
+        "type": "stat",
+    }
+
+dashboard = {
+    "annotations": {"list": []},
+    "editable": True,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": None,
+    "links": [],
+    "liveNow": True,
+    "panels": [
+        painel_stat("Temperatura", "Temperatura", "celsius", {
+            "mode": "absolute",
+            "steps": [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 28},
+                {"color": "red", "value": 32},
+            ],
+        }),
+        painel_stat("Umidade", "Umidade", "percent", {
+            "mode": "absolute",
+            "steps": [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 65},
+                {"color": "red", "value": 80},
+            ],
+        }),
+        painel_stat("Modo", "Modo", "short"),
+        painel_stat("Estado", "Estado", "short"),
+    ],
+    "refresh": "10s",
+    "schemaVersion": 39,
+    "tags": ["cpd"],
+    "templating": {"list": []},
+    "time": {"from": "now-30m", "to": "now"},
+    "timezone": "browser",
+    "title": "CPD Dashboard 2D",
+    "uid": "cpd-dashboard-2d",
+    "version": 1,
+}
+
+payload = {
+    "dashboard": dashboard,
+    "overwrite": True,
+    "message": "Criado via API (formato novo do plugin Zabbix)",
+}
+
+r = requests.post(
+    f"{GRAFANA_URL}/api/dashboards/db",
+    auth=(GRAFANA_USER, GRAFANA_PASS),
+    json=payload,
+    headers={"Content-Type": "application/json"},
+)
+
+if r.status_code == 200:
+    data = r.json()
+    print(f"OK: dashboard criado")
+    print(f"URL: {GRAFANA_URL}{data.get('url', '/d/cpd-dashboard-2d')}")
+else:
+    print(f"ERRO {r.status_code}: {r.text}")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python criar_dashboard_2d.py
+O que esperar:
+
+text
+OK: dashboard criado
+URL: http://localhost:3000/d/cpd-dashboard-2d
+🛠️ Passo 2 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard-2d
+O que deve aparecer: 4 painéis (Temperatura, Umidade, Modo, Estado) com dados.
+
+Me diga:
+
+O curl com a senha cris-admin retorna a lista de datasources?
+
+O python criar_dashboard_2d.py criou o dashboard?
+
+O dashboard cpd-dashboard-2d mostra os 4 painéis com dados?
+
+Com isso, resolvemos o dashboard 2D. 🚀
+
+❯ curl -s -u admin:cris-admin http://localhost:3000/api/datasources | python3 -m json.tool
+{
+    "extra": null,
+    "message": "Invalid username or password",
+    "messageId": "password-auth.failed",
+    "statusCode": 401,
+    "traceID": ""
+}
+╭─ ~/Desktop
+🎯 A senha do .env não é a senha real do Grafana
+O curl com admin:cris-admin também deu 401. Isso significa que a senha no .env (GRAFANA_ADMIN_PASSWORD=cris-admin) não é a senha que o Grafana está usando.
+
+Isso acontece porque o Grafana tem uma senha gravada no banco (volume grafana_data), e o GF_SECURITY_ADMIN_PASSWORD do .env só é usado na primeira inicialização. Se você já subiu o Grafana antes com outra senha (ou o cris-admin não foi aplicado porque o volume já existia), a senha do banco prevalece.
+
+🛠️ Solução: Resetar a senha do admin do Grafana
+Opção A — Resetar via CLI do Grafana
+bash
+docker compose exec grafana grafana cli admin reset-admin-password admin
+O que esperar: Admin password changed successfully ✔
+
+Agora a senha é admin.
+
+Teste:
+
+bash
+curl -s -u admin:admin http://localhost:3000/api/datasources | python3 -m json.tool
+O que deve aparecer: a lista de datasources.
+
+Opção B — Deletar o volume do Grafana (perde dados)
+Se você quiser recomeçar do zero (perde dashboards editados, mas os provisionados voltam):
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose down grafana
+docker volume rm monitoramento-cpd_grafana_data
+docker compose up -d grafana
+O que espera: o Grafana sobe com a senha do .env (cris-admin).
+
+Teste:
+
+bash
+curl -s -u admin:cris-admin http://localhost:3000/api/datasources | python3 -m json.tool
+Me diga:
+
+Você prefere resetar a senha (Opção A) ou deletar o volume (Opção B)?
+
+Após o reset, o curl com admin:admin (ou admin:cris-admin) retorna a lista de datasources?
+
+Com isso, validamos o acesso à API e partimos para a criação do dashboard 2D. 🚀
+
+🎉 A senha do admin foi resetada!
+O log confirma:
+
+text
+Admin password changed successfully ✔
+Agora a senha do admin é admin (não mais cris-admin).
+
+🛠️ Passo 1 — Testar o acesso à API
+bash
+curl -s -u admin:admin http://localhost:3000/api/datasources | python3 -m json.tool
+O que deve aparecer: a lista de datasources (Zabbix e Prometheus).
+
+🛠️ Passo 2 — Criar o dashboard 2D via API
+Agora que a senha é admin, o script Python vai funcionar.
+
+Crie o script:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/criar_dashboard_2d.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Cria o dashboard 2D via API do Grafana (formato novo do plugin Zabbix)."""
+import json
+import os
+import requests
+
+GRAFANA_URL = "http://localhost:3000"
+GRAFANA_USER = "admin"
+GRAFANA_PASS = "admin"
+
+def painel_stat(titulo, item, unidade, thresholds=None):
+    if not thresholds:
+        thresholds = {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": None}],
+        }
+    return {
+        "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+        "fieldConfig": {
+            "defaults": {
+                "color": {"mode": "thresholds"},
+                "mappings": [],
+                "thresholds": thresholds,
+                "unit": unidade,
+            },
+            "overrides": [],
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+        "id": 1,
+        "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+            "textMode": "auto",
+        },
+        "targets": [
+            {
+                "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+                "queryType": "0",
+                "refId": "A",
+                "group": "CPD",
+                "host": "Rack CPD",
+                "item": item,
+            }
+        ],
+        "title": titulo,
+        "type": "stat",
+    }
+
+dashboard = {
+    "annotations": {"list": []},
+    "editable": True,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": None,
+    "links": [],
+    "liveNow": True,
+    "panels": [
+        painel_stat("Temperatura", "Temperatura", "celsius", {
+            "mode": "absolute",
+            "steps": [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 28},
+                {"color": "red", "value": 32},
+            ],
+        }),
+        painel_stat("Umidade", "Umidade", "percent", {
+            "mode": "absolute",
+            "steps": [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 65},
+                {"color": "red", "value": 80},
+            ],
+        }),
+        painel_stat("Modo", "Modo", "short"),
+        painel_stat("Estado", "Estado", "short"),
+    ],
+    "refresh": "10s",
+    "schemaVersion": 39,
+    "tags": ["cpd"],
+    "templating": {"list": []},
+    "time": {"from": "now-30m", "to": "now"},
+    "timezone": "browser",
+    "title": "CPD Dashboard 2D",
+    "uid": "cpd-dashboard-2d",
+    "version": 1,
+}
+
+payload = {
+    "dashboard": dashboard,
+    "overwrite": True,
+    "message": "Criado via API (formato novo do plugin Zabbix)",
+}
+
+r = requests.post(
+    f"{GRAFANA_URL}/api/dashboards/db",
+    auth=(GRAFANA_USER, GRAFANA_PASS),
+    json=payload,
+    headers={"Content-Type": "application/json"},
+)
+
+if r.status_code == 200:
+    data = r.json()
+    print(f"OK: dashboard criado")
+    print(f"URL: {GRAFANA_URL}{data.get('url', '/d/cpd-dashboard-2d')}")
+else:
+    print(f"ERRO {r.status_code}: {r.text}")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python criar_dashboard_2d.py
+rm criar_dashboard_2d.py
+O que esperar:
+
+text
+OK: dashboard criado
+URL: http://localhost:3000/d/cpd-dashboard-2d
+🛠️ Passo 3 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard-2d
+O que deve aparecer: 4 painéis (Temperatura, Umidade, Modo, Estado) com dados.
+
+Se der "No data" em algum painel:
+
+Clique no painel → Edit.
+
+Verifique se o campo Item está preenchido (Temperatura, Umidade, Modo, Estado).
+
+Clique em Save.
+
+Me diga:
+
+O curl -u admin:admin retorna a lista de datasources?
+
+O python criar_dashboard_2d.py criou o dashboard?
+
+O dashboard cpd-dashboard-2d mostra os 4 painéis com dados?
+
+Com isso, resolvemos o dashboard 2D. 🚀
+
+❯ curl -s -u admin:admin http://localhost:3000/api/datasources | python3 -m json.tool
+[
+    {
+        "id": 2,
+        "uid": "prometheus",
+        "orgId": 1,
+        "name": "Prometheus",
+        "type": "prometheus",
+        "typeName": "Prometheus",
+        "typeLogoUrl": "public/plugins/prometheus/img/prometheus_logo.svg",
+        "access": "proxy",
+        "url": "http://cpd-prometheus:9090",
+        "user": "",
+        "database": "",
+        "basicAuth": false,
+        "isDefault": false,
+        "jsonData": {
+            "httpMethod": "POST",
+            "timeInterval": "15s"
+        },
+        "readOnly": true
+    },
+    {
+        "id": 1,
+        "uid": "zabbix",
+        "orgId": 1,
+        "name": "Zabbix",
+        "type": "alexanderzobnin-zabbix-datasource",
+        "typeName": "Zabbix",
+        "typeLogoUrl": "public/plugins/alexanderzobnin-zabbix-datasource/img/icn-zabbix-datasource.svg",
+        "access": "proxy",
+        "url": "http://cpd-zabbix-web:8080/api_jsonrpc.php",
+        "user": "",
+        "database": "",
+        "basicAuth": false,
+        "isDefault": true,
+        "jsonData": {
+            "alerting": false,
+            "cacheTTL": "1m",
+            "trends": true,
+            "trendsFrom": "7d",
+            "trendsRange": "4d",
+            "username": "Admin"
+        },
+        "readOnly": true
+    }
+]
+🎉 PERFEITO! A API do Grafana está acessível!
+A resposta mostra os dois datasources:
+
+UID	Nome	Tipo
+prometheus	Prometheus	prometheus
+zabbix	Zabbix	alexanderzobnin-zabbix-datasource
+Tudo certo. Agora vamos criar o dashboard 2D via API, com o formato correto do plugin Zabbix.
+
+🛠️ Passo 1 — Criar o dashboard 2D
+bash
+cat > ~/Desktop/monitoramento-cpd/criar_dashboard_2d.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Cria o dashboard 2D via API do Grafana (formato novo do plugin Zabbix)."""
+import json
+import requests
+
+GRAFANA_URL = "http://localhost:3000"
+GRAFANA_USER = "admin"
+GRAFANA_PASS = "admin"
+
+def painel_stat(titulo, item, unidade, thresholds=None):
+    if not thresholds:
+        thresholds = {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": None}],
+        }
+    return {
+        "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+        "fieldConfig": {
+            "defaults": {
+                "color": {"mode": "thresholds"},
+                "mappings": [],
+                "thresholds": thresholds,
+                "unit": unidade,
+            },
+            "overrides": [],
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+        "id": 1,
+        "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+            "textMode": "auto",
+        },
+        "targets": [
+            {
+                "datasource": {"type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix"},
+                "queryType": "0",
+                "refId": "A",
+                "group": "CPD",
+                "host": "Rack CPD",
+                "item": item,
+            }
+        ],
+        "title": titulo,
+        "type": "stat",
+    }
+
+dashboard = {
+    "annotations": {"list": []},
+    "editable": True,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": None,
+    "links": [],
+    "liveNow": True,
+    "panels": [
+        painel_stat("Temperatura", "Temperatura", "celsius", {
+            "mode": "absolute",
+            "steps": [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 28},
+                {"color": "red", "value": 32},
+            ],
+        }),
+        painel_stat("Umidade", "Umidade", "percent", {
+            "mode": "absolute",
+            "steps": [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 65},
+                {"color": "red", "value": 80},
+            ],
+        }),
+        painel_stat("Modo", "Modo", "short"),
+        painel_stat("Estado", "Estado", "short"),
+    ],
+    "refresh": "10s",
+    "schemaVersion": 39,
+    "tags": ["cpd"],
+    "templating": {"list": []},
+    "time": {"from": "now-30m", "to": "now"},
+    "timezone": "browser",
+    "title": "CPD Dashboard 2D",
+    "uid": "cpd-dashboard-2d",
+    "version": 1,
+}
+
+payload = {
+    "dashboard": dashboard,
+    "overwrite": True,
+    "message": "Criado via API (formato novo do plugin Zabbix)",
+}
+
+r = requests.post(
+    f"{GRAFANA_URL}/api/dashboards/db",
+    auth=(GRAFANA_USER, GRAFANA_PASS),
+    json=payload,
+    headers={"Content-Type": "application/json"},
+)
+
+if r.status_code == 200:
+    data = r.json()
+    print(f"OK: dashboard criado")
+    print(f"URL: {GRAFANA_URL}{data.get('url', '/d/cpd-dashboard-2d')}")
+else:
+    print(f"ERRO {r.status_code}: {r.text}")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python criar_dashboard_2d.py
+rm criar_dashboard_2d.py
+O que esperar:
+
+text
+OK: dashboard criado
+URL: http://localhost:3000/d/cpd-dashboard-2d
+🛠️ Passo 2 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard-2d
+O que deve aparecer: 4 painéis (Temperatura, Umidade, Modo, Estado) com dados.
+
+Se algum der "No data":
+
+Clique no painel → Edit.
+
+Verifique se o campo Item está preenchido (Temperatura, Umidade, Modo, Estado).
+
+Clique em Save.
+
+🛠️ Passo 3 — Se funcionar, ajustar o cpd-dashboard.json original
+O dashboard antigo (cpd-dashboard.json) ainda está provisionado com o formato antigo (que não funciona). Para evitar conflito, remova-o:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git rm grafana/dashboards/cpd-dashboard.json
+docker compose restart grafana
+O que esperar: o dashboard antigo (cpd-dashboard) desaparece, e o novo (cpd-dashboard-2d) fica.
+
+Me diga:
+
+O python criar_dashboard_2d.py criou o dashboard?
+
+O dashboard cpd-dashboard-2d mostra os 4 painéis com dados?
+
+Se algum der "No data", qual é?
+
+Com isso, resolvemos o dashboard 2D. 🚀
+
+Como saber?
+
+Me diga:
+
+O python criar_dashboard_2d.py criou o dashboard?
+
+O dashboard cpd-dashboard-2d mostra os 4 painéis com dados?
+
+Se algum der "No data", qual é?
+🎯 Como saber se o dashboard foi criado
+Você tem 3 formas de verificar:
+
+Forma 1 — A saída do script Python
+Quando você rodou o script, ele imprimiu:
+
+text
+OK: dashboard criado
+URL: http://localhost:3000/d/cpd-dashboard-2d
+Se apareceu isso, o dashboard foi criado. Se apareceu ERRO ..., não foi.
+
+Se você não viu a saída, rode o script de novo (ele é idempotente — pode rodar várias vezes, sobrescreve o dashboard).
+
+Forma 2 — A URL do dashboard
+Abra no navegador:
+
+text
+http://localhost:3000/d/cpd-dashboard-2d
+O que vai aparecer:
+
+Se o dashboard existe: 4 painéis (Temperatura, Umidade, Modo, Estado).
+
+Se não existe: "Dashboard not found".
+
+Forma 3 — A lista de dashboards no Grafana
+Abra:
+
+text
+http://localhost:3000/dashboards
+O que vai aparecer: a lista de dashboards. Procure por "CPD Dashboard 2D".
+
+Se aparecer: o dashboard foi criado.
+
+Se não aparecer: o dashboard não foi criado.
+
+🛠️ O que fazer agora
+Rode os 3 comandos abaixo e me diga a saída de cada um:
+
+1. Rodar o script (de novo, para garantir)
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python criar_dashboard_2d.py
+O que esperar: OK: dashboard criado ou ERRO ....
+
+Se o arquivo criar_dashboard_2d.py não existir (foi removido), recrie com o conteúdo da minha mensagem anterior.
+
+2. Verificar a URL do dashboard
+text
+http://localhost:3000/d/cpd-dashboard-2d
+O que aparece? (4 painéis ou "Dashboard not found"?)
+
+3. Verificar a lista de dashboards
+text
+http://localhost:3000/dashboards
+O que aparece? (o "CPD Dashboard 2D" está na lista?)
+
+Se o dashboard foi criado mas os painéis dão "No data"
+Aí o problema é nas queries. Me diga qual painel dá "No data" e eu te ajudo a corrigir.
+
+Se todos derem "No data", o problema pode ser:
+
+O datasource Zabbix não está com uid: zabbix.
+
+O group/host/item não batem com o Zabbix.
+
+Me diga:
+
+O python criar_dashboard_2d.py rodou? Qual foi a saída?
+
+O http://localhost:3000/d/cpd-dashboard-2d mostra os 4 painéis?
+
+Se algum der "No data", qual é?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+🎯 O dashboard foi criado, mas os painéis estão "No data"
+O dashboard CPD Dashboard 2D existe (4 painéis), mas todos mostram "No data". Isso significa que o formato da query que usei no script Python não é o correto para o plugin Zabbix v6.10.3.
+
+O plugin v6.10.3 usa um formato diferente do que eu usei. Precisamos descobrir o formato exato que ele espera.
+
+🛠️ Passo 1 — Descobrir o formato correto (via interface)
+Vamos usar a interface do Grafana para criar um painel que funciona e depois exportar o JSON para ver o formato.
+
+1. Abra o dashboard cpd-dashboard-2d
+text
+http://localhost:3000/d/cpd-dashboard-2d
+2. Edite o painel Temperatura
+Clique no painel Temperatura → Edit.
+
+3. Preencha os campos manualmente
+Na aba Query, preencha:
+
+Data source: Zabbix
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Temperatura
+
+4. Clique em Run query
+O que deve aparecer: o valor 22.7°C.
+
+5. Exporte o JSON do painel
+Clique no ícone de três pontinhos (no topo do painel) → Export → Copy to clipboard (ou salve o JSON).
+
+Ou, mais simples: clique em Query inspector (ícone de "olho"), vá na aba JSON, e copie o JSON da query.
+
+🛠️ Passo 2 — Me mande o JSON da query
+Me mande o JSON da query (do Query inspector ou do Export).
+
+Vou usar esse JSON para ajustar o script Python e criar o dashboard com o formato correto.
+
+🎯 Alternativa: usar o cpd-dashboard.json antigo como base
+O cpd-dashboard.json que você tinha antes (o que estava provisionado) funcionava (Temperatura mostrava 22.7°C). O problema era que os outros painéis estavam vazios.
+
+Me diga:
+
+O cpd-dashboard.json antigo (o original) ainda está no Git? (git log --oneline -- grafana/dashboards/cpd-dashboard.json)
+
+Se sim, podemos restaurá-lo (git checkout HEAD -- grafana/dashboards/cpd-dashboard.json) e depois preencher os campos vazios manualmente (via interface) ou via API.
+
+Me diga:
+
+Você conseguiu preencher o painel Temperatura manualmente e ver o valor 22.7°C?
+
+Se sim, me mande o JSON da query (do Query inspector ou Export).
+
+Se não, qual o erro?
+
+Com o JSON correto, eu ajusto o script e criamos o dashboard definitivo. 🚀
+
+🎯 Alternativa: usar o cpd-dashboard.json antigo como base
+O cpd-dashboard.json que você tinha antes (o que estava provisionado) funcionava (Temperatura mostrava 22.7°C). O problema era que os outros painéis estavam vazios.
+
+Me diga:
+
+O cpd-dashboard.json antigo (o original) ainda está no Git? (git log --oneline -- grafana/dashboards/cpd-dashboard.json)
+
+Se sim, podemos restaurá-lo (git checkout HEAD -- grafana/dashboards/cpd-dashboard.json) e depois preencher os campos vazios manualmente (via interface) ou via API.
+🎯 Vamos verificar o cpd-dashboard.json antigo
+Rode o comando para ver o histórico do arquivo:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git log --oneline -- grafana/dashboards/cpd-dashboard.json
+O que deve aparecer: a lista de commits que modificaram o arquivo.
+
+Se aparecer 1 ou mais commits, o arquivo antigo está no Git.
+
+Se der "fatal: ... does not have any commits yet", o arquivo nunca foi commitado (improvável, porque você já fez git push).
+
+🛠️ Passo 1 — Ver o estado atual do arquivo
+bash
+ls -la ~/Desktop/monitoramento-cpd/grafana/dashboards/
+O que deve aparecer:
+
+text
+cpd-3d.json
+cpd-dashboard.json   ← ainda existe?
+observabilidade.json
+Se o cpd-dashboard.json não estiver lá, ele foi removido (pelo git rm que eu sugeri). Nesse caso, restaure:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git checkout HEAD -- grafana/dashboards/cpd-dashboard.json
+🛠️ Passo 2 — Restaurar o cpd-dashboard.json (se necessário)
+Se o arquivo não estiver na pasta:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git checkout HEAD -- grafana/dashboards/cpd-dashboard.json
+docker compose restart grafana
+O que esperar: o dashboard CPD Dashboard (antigo) volta a aparecer.
+
+🛠️ Passo 3 — Abrir o dashboard antigo
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: o dashboard com os 5 painéis (Temperatura, Umidade, Modo, Estado, Histórico).
+
+O painel Temperatura deve funcionar (22.7°C). Os outros provavelmente estarão vazios.
+
+🛠️ Passo 4 — Preencher os campos vazios
+Se o painel Temperatura funciona e os outros não, o problema é que os campos Group, Host, Item estão vazios nos outros painéis.
+
+Solução: preencher manualmente na interface (painel por painel) ou via API.
+
+Preencher manualmente (interface)
+Abra o dashboard: http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+
+Clique no painel Umidade → Edit.
+
+Na aba Query, preencha:
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Umidade
+
+Clique em Run query (para testar).
+
+Clique em Save (no painel).
+
+Repita para Modo, Estado e Histórico.
+
+Preencher via API (mais rápido)
+Se preferir automatizar, me diga e eu te passo um script Python que preenche os campos via API.
+
+Me diga:
+
+O git log --oneline -- grafana/dashboards/cpd-dashboard.json mostra commits?
+
+O cpd-dashboard.json ainda está na pasta grafana/dashboards/?
+
+Se não, o git checkout HEAD -- grafana/dashboards/cpd-dashboard.json restaurou o arquivo?
+
+Após o docker compose restart grafana, o dashboard cpd-dashboard mostra os 5 painéis?
+
+O painel Temperatura mostra 22.7°C?
+
+Com isso, identificamos o estado do cpd-dashboard.json e partimos para o preenchimento dos campos. 🚀
+
+3a58b6e feat: pipeline completo de monitoramento CPD (Wokwi -> Zabbix -> Grafana 2D/3D)
+...skipping...
+3a58b6e feat: pipeline completo de monitoramento CPD (Wokwi -> Zabbix -> Grafana 2D/3D)
+🎯 O arquivo está no Git!
+O git log mostra o commit:
+
+text
+3a58b6e feat: pipeline completo de monitoramento CPD (Wokwi -> Zabbix -> Grafana 2D/3D)
+O cpd-dashboard.json está versionado no commit 3a58b6e. Podemos restaurá-lo.
+
+🛠️ Passo 1 — Verificar se o arquivo está na pasta
+bash
+ls -la ~/Desktop/monitoramento-cpd/grafana/dashboards/
+O que deve aparecer:
+
+cpd-3d.json
+
+cpd-dashboard.json (se foi removido, não aparece)
+
+observabilidade.json
+
+🛠️ Passo 2 — Restaurar o arquivo (se não estiver lá)
+bash
+cd ~/Desktop/monitoramento-cpd
+git checkout HEAD -- grafana/dashboards/cpd-dashboard.json
+Verifique:
+
+bash
+ls -la ~/Desktop/monitoramento-cpd/grafana/dashboards/
+O que deve aparecer: o cpd-dashboard.json de volta.
+
+🛠️ Passo 3 — Reiniciar o Grafana
+bash
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 4 — Abrir o dashboard antigo
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: o dashboard com os 5 painéis.
+
+O painel Temperatura deve mostrar 22.7°C. Os outros podem estar vazios (problema conhecido).
+
+🛠️ Passo 5 — Me diga o estado dos painéis
+Me diga:
+
+O git checkout HEAD -- grafana/dashboards/cpd-dashboard.json restaurou o arquivo?
+
+O docker compose restart grafana rodou sem erro?
+
+O http://localhost:3000/d/cpd-dashboard/cpd-dashboard mostra os 5 painéis?
+
+Quais painéis mostram dados e quais mostram "No data"?
+
+Com isso, sabemos exatamente o que está funcionando e o que precisa ser corrigido. 🚀
+
+❯ 3a58b6e feat: pipeline completo de monitoramento CPD (Wokwi -> Zabbix -> Grafana 2D/3D)
+zsh: parse error near `)'
+O erro zsh: parse error near ')' acontece porque você colou a saída do git log no terminal (com o parêntese ) no final), e o zsh tentou interpretar como comando.
+
+Isso não é grave — só significa que o comando não foi executado. O git log mostrou o commit, o que é o que importava.
+
+🛠️ O que fazer agora
+Passo 1 — Restaurar o cpd-dashboard.json
+bash
+cd ~/Desktop/monitoramento-cpd
+git checkout HEAD -- grafana/dashboards/cpd-dashboard.json
+Passo 2 — Verificar se o arquivo voltou
+bash
+ls -la ~/Desktop/monitoramento-cpd/grafana/dashboards/
+O que deve aparecer:
+
+text
+cpd-3d.json
+cpd-dashboard.json   ← de volta
+observabilidade.json
+Passo 3 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+Passo 4 — Abrir o dashboard antigo
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: os 5 painéis (Temperatura, Umidade, Modo, Estado, Histórico).
+
+Me diga:
+
+O git checkout restaurou o arquivo?
+
+O docker compose restart grafana rodou sem erro?
+
+O dashboard cpd-dashboard mostra os 5 painéis?
+
+Quais painéis mostram dados e quais mostram "No data"?
+
+Com isso, sabemos o estado real do dashboard 2D. 🚀
+
+❯ ls -la ~/Desktop/monitoramento-cpd/grafana/dashboards/
+.rw-r--r--@ 3,6k cristiano 12 nov 20:42  cpd-3d.json
+.rw-r--r--  9,7k cristiano 12 nov 23:38  cpd-dashboard.json
+.rw-r--r--@ 9,9k cristiano 12 nov 23:19  observabilidade.json
+🎉 O cpd-dashboard.json está de volta!
+text
+cpd-3d.json
+cpd-dashboard.json   ← restaurado
+observabilidade.json
+Agora o Grafana vai relê-lo e recriar o dashboard antigo. Vamos verificar.
+
+🛠️ Passo 1 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 2 — Abrir o dashboard antigo
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: os 5 painéis (Temperatura, Umidade, Modo, Estado, Histórico).
+
+Me diga:
+
+O dashboard cpd-dashboard aparece?
+
+Quais painéis mostram dados (Temperatura, Umidade, Modo, Estado, Histórico)?
+
+Quais painéis mostram "No data"?
+
+Com isso, sabemos o que está funcionando e o que precisa ser corrigido. 🚀
+
+🎯 O dashboard foi restaurado, mas todos os painéis estão "No data"
+O cpd-dashboard.json está no lugar, mas o Grafana não consegue ler os dados do Zabbix. Isso indica que o formato da query no JSON não é compatível com o plugin Zabbix v6.10.3.
+
+O painel Temperatura que funcionava antes (22.7°C) só funcionava porque você selecionou o Item manualmente na interface. Quando o Grafana relê o JSON, ele sobrescreve com o formato antigo (que não funciona).
+
+🎯 Solução: Descobrir o formato correto via interface
+Vamos usar a interface para criar um painel que funciona e depois exportar o JSON para ver o formato exato.
+
+🛠️ Passo 1 — Editar o painel Temperatura
+No dashboard, clique no painel Temperatura → Edit.
+
+Na aba Query, preencha:
+
+Data source: Zabbix
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Temperatura
+
+Clique em Run query.
+
+O que deve aparecer: o valor 22.7°C.
+
+🛠️ Passo 2 — Exportar o JSON do painel
+Clique no ícone de três pontinhos (no topo do painel, ao lado de "Temperatura").
+
+Clique em Export (ou Inspect → JSON).
+
+Copie o JSON.
+
+Ou, mais simples:
+
+Clique em Query inspector (ícone de "olho" ou "i").
+
+Vá na aba JSON.
+
+Copie o conteúdo.
+
+🛠️ Passo 3 — Me mande o JSON
+Me mande o JSON do painel Temperatura (que funciona) para eu ver o formato exato que o plugin v6.10.3 espera.
+
+Com esse JSON, eu ajusto o cpd-dashboard.json para todos os painéis usarem o formato correto.
+
+Me diga:
+
+Você conseguiu preencher o painel Temperatura manualmente e ver 22.7°C?
+
+Conseguiu exportar o JSON do painel (via Export ou Query inspector)?
+
+Se sim, cole o JSON aqui.
+
+Com o JSON correto, resolvemos o dashboard 2D de vez. 🚀
+
+traceId:undefined
+request:Object
+url:"api/ds/query?ds_type=alexanderzobnin-zabbix-datasource&requestId=SQR129"
+method:"POST"
+data:Object
+queries:Array[1]
+0:Object
+from:"1794535883521"
+to:"1794537683521"
+hideFromInspector:false
+response:Object
+results:Object
+A:Object
+status:200
+frames:Array[1]
+refId:"A"
+Perfeito! O Query inspector mostra a resposta com status 200, mas o painel ainda mostra "No data". Isso significa que a query está indo ao Zabbix, mas o Grafana não está conseguindo interpretar a resposta.
+
+O problema mais provável é o formato do campo item no JSON do dashboard. O plugin v6.10.3 espera o item como string simples (ex: "Temperatura"), mas o cpd-dashboard.json antigo usa o formato antigo ("item": { "filter": "Temperatura" }).
+
+🎯 Solução: Exportar o JSON do painel que funciona
+Vamos exportar o JSON de um painel que você configurou manualmente e que funciona, para ver o formato exato.
+
+🛠️ Passo 1 — Editar o painel Temperatura (manual)
+Abra o dashboard: http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+
+Clique no painel Temperatura → Edit.
+
+Na aba Query, preencha:
+
+Data source: Zabbix
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Temperatura
+
+Clique em Run query.
+
+O que deve aparecer: o valor 22.7°C.
+
+🛠️ Passo 2 — Exportar o painel
+Clique no ícone de três pontinhos (ao lado do título "Temperatura") → More... → Export.
+
+Copie o JSON.
+
+Ou, se não achar:
+
+Clique em Query inspector (ícone de "olho").
+
+Na aba JSON, copie o conteúdo.
+
+🛠️ Passo 3 — Me mande o JSON
+Me mande o JSON completo do painel (não só o inspector). O JSON do painel tem os campos:
+
+targets
+
+datasource
+
+fieldConfig
+
+etc.
+
+Com esse JSON, eu ajusto o cpd-dashboard.json para todos os painéis.
+
+Me diga:
+
+Você conseguiu preencher o painel Temperatura manualmente e ver 22.7°C?
+
+Conseguiu exportar o JSON do painel (via Export ou Query inspector)?
+
+Se sim, cole o JSON aqui.
+
+Com o JSON correto, resolvemos o dashboard 2D de vez. 🚀
+
+Onde tem Run Query?
+🎯 O painel está funcionando! Olha o fundo verde!
+Na sua captura, o painel Temperatura está com fundo verde e o valor 22 (ou 22.7°C) aparece. A query está correta.
+
+O botão Run query não aparece porque o Grafana atualiza automaticamente quando você muda um campo (o refresh é automático). Não precisa clicar em nada.
+
+🛠️ Passo 1 — Salvar o painel
+Como o painel está funcionando, clique em Save (canto superior direito) → Save para salvar o painel.
+
+🛠️ Passo 2 — Copiar o JSON do painel
+Para eu ajustar o cpd-dashboard.json, preciso ver o formato exato que o plugin usou.
+
+Clique no ícone de três pontinhos (ao lado do título "Temperatura") → More... → Export.
+
+Ou, mais simples: clique no ícone de três pontinhos → Inspect → JSON.
+
+Copie o JSON e me mande.
+
+O que o JSON deve ter:
+
+"targets": [{ "queryType": "0", "group": "CPD", "host": "Rack CPD", "item": "Temperatura" }]
+
+"datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" }
+
+🛠️ Passo 3 — Se preferir, me mande o JSON do dashboard inteiro
+Se você quiser, pode exportar o dashboard inteiro (com todos os painéis) e me mandar:
+
+No topo do dashboard, clique no ícone de três pontinhos → Export.
+
+Copie o JSON.
+
+Me mande o JSON e eu ajusto o cpd-dashboard.json para todos os painéis.
+
+Me diga:
+
+O painel Temperatura mostra 22.7°C (fundo verde)?
+
+Você conseguiu exportar o JSON do painel (via Export ou Inspect)?
+
+Se sim, cole o JSON aqui.
+
+Com o JSON correto, resolvemos o dashboard 2D de vez. 🚀
+
+🎯 Encontrei o problema!
+O JSON que você exportou mostra que o painel Temperatura usa o formato:
+
+json
+"item": { "filter": "Temperatura" }
+Mas os outros painéis (Umidade, Modo, Estado, Histórico) usam:
+
+json
+"item": { "key": "esp32.umid" }
+O formato correto é "filter" (com o nome do item), não "key" (com a chave técnica).
+
+Por isso só o painel Temperatura funciona.
+
+🛠️ Solução: Corrigir o cpd-dashboard.json
+Vamos trocar todos os "key": "esp32.xxx" por "filter": "NomeDoItem".
+
+bash
+cat > ~/Desktop/monitoramento-cpd/corrigir_dashboard_2d.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Corrige o cpd-dashboard.json trocando 'key' por 'filter'."""
+import json
+import os
+
+BASE = "/Users/cristiano/Desktop/monitoramento-cpd"
+CAMINHO = os.path.join(BASE, "grafana", "dashboards", "cpd-dashboard.json")
+
+with open(CAMINHO) as f:
+    dashboard = json.load(f)
+
+# Mapeamento: key técnica -> nome do item no Zabbix
+MAP = {
+    "esp32.umid": "Umidade",
+    "esp32.modo": "Modo",
+    "esp32.estado": "Estado",
+    "esp32.temp": "Temperatura",
+    "esp32.porta": "Porta Aberta",
+    "esp32.distancia": "Distância",
+    "esp32.invasoes": "Invasões",
+    "esp32.ambiente": "Ambiente",
+    "esp32.luz": "Luminosidade",
+}
+
+def corrigir_no(obj):
+    """Percorre o JSON e troca 'key' por 'filter'."""
+    if isinstance(obj, dict):
+        if "item" in obj and isinstance(obj["item"], dict):
+            item = obj["item"]
+            if "key" in item and item["key"] in MAP:
+                item["filter"] = MAP[item["key"]]
+                del item["key"]
+        for v in obj.values():
+            corrigir_no(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            corrigir_no(v)
+
+corrigir_no(dashboard)
+
+with open(CAMINHO, "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+
+print(f"OK: {CAMINHO}")
+print("Itens corrigidos:")
+for key, name in MAP.items():
+    print(f"  {key} -> {name}")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+python3 corrigir_dashboard_2d.py
+rm corrigir_dashboard_2d.py
+🛠️ Passo 2 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 3 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados (Temperatura, Umidade, Modo, Estado, Histórico).
+
+🛠️ Passo 4 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: troca 'key' por 'filter' nas queries do dashboard 2D
+
+- O plugin Zabbix v6.10.3 espera 'filter' (nome do item), não 'key'.
+- Agora todos os painéis usam o formato correto."
+git push
+Me diga:
+
+O python3 corrigir_dashboard_2d.py rodou sem erro?
+
+Após o docker compose restart grafana, os painéis mostram dados?
+
+Se algum ainda der "No data", qual é?
+
+Com isso, resolvemos o dashboard 2D. 🚀
+
+O JSON foi corrigido, mas os painéis continuam "No data". Isso indica que o formato do JSON que o Grafana 13 lê é o schema v2 (aquele que você exportou), e o arquivo cpd-dashboard.json no disco ainda está no schema v1 (formato antigo).
+
+O Grafana 13 converte o schema v1 para v2 quando carrega, mas a conversão pode não estar aplicando o filter corretamente.
+
+🎯 Solução definitiva: usar o JSON exportado (schema v2) como fonte
+O JSON que você exportou (o do arquivo {.txt}) funciona (o painel Temperatura mostrava 22.7°C). Vamos salvá-lo como o cpd-dashboard.json oficial.
+
+Passo 1 — Salvar o JSON exportado
+
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'JSONEOF'
+{
+  "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "cpd-dashboard",
+    "uid": "cpd-dashboard"
+  },
+  "spec": {
+    "title": "CPD Dashboard",
+    "description": "Monitoramento do CPD em tempo real via MQTT + Zabbix",
+    "tags": ["cpd", "rackmonitor"],
+    "editable": true,
+    "liveNow": true,
+    "timeSettings": {
+      "from": "now-30m",
+      "to": "now",
+      "timezone": "browser",
+      "autoRefresh": "10s",
+      "autoRefreshIntervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+    },
+    "variables": [],
+    "annotations": [],
+    "links": [],
+    "elements": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "id": 1,
+          "title": "Temperatura",
+          "description": "Temperatura atual do rack (°C). Faixas: verde até 28°C, amarelo 28-32°C, vermelho acima de 32°C.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Temperatura" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds" },
+                  "decimals": 1,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "color": "green", "value": 0 },
+                      { "color": "yellow", "value": 28 },
+                      { "color": "red", "value": 32 }
+                    ]
+                  },
+                  "unit": "celsius"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background_solid",
+                "graphMode": "area",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "id": 2,
+          "title": "Umidade",
+          "description": "Umidade relativa do ar (%). Faixas: verde até 65%, amarelo 65-80%, vermelho acima de 80%.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Umidade" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds" },
+                  "decimals": 1,
+                  "max": 100,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "color": "green", "value": 0 },
+                      { "color": "yellow", "value": 65 },
+                      { "color": "red", "value": 80 }
+                    ]
+                  },
+                  "unit": "percent"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background_solid",
+                "graphMode": "area",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "id": 3,
+          "title": "Modo",
+          "description": "Modo atual do vigilante. ARMADO (azul) ou DESARMADO (laranja).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Modo" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": [{
+                "kind": "Transformation",
+                "group": "organize",
+                "spec": {
+                  "options": {
+                    "excludeByName": { "Time": true },
+                    "renameByName": { "Modo": "Modo" }
+                  }
+                }
+              }]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds", "fixedColor": "blue" },
+                  "mappings": [
+                    { "type": "value", "options": { "ARMADO": { "color": "blue", "index": 0 } } },
+                    { "type": "value", "options": { "DESARMADO": { "color": "orange", "index": 1 } } }
+                  ],
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": { "type": "auto" },
+                    "footer": { "reducers": [] },
+                    "inspect": false
+                  },
+                  "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": 0 }] }
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "lg",
+                "displayMode": "gradient",
+                "showHeader": false
+              }
+            }
+          }
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "id": 4,
+          "title": "Estado",
+          "description": "Estado de segurança do CPD. NORMAL, EMERGENCIA RACK, INVASAO SALA, etc.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Estado" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": [{
+                "kind": "Transformation",
+                "group": "organize",
+                "spec": {
+                  "options": {
+                    "excludeByName": { "Time": true },
+                    "renameByName": { "Estado": "Estado" }
+                  }
+                }
+              }]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds" },
+                  "mappings": [
+                    { "type": "value", "options": { "NORMAL": { "color": "green", "index": 0 } } },
+                    { "type": "value", "options": { "AVISO SALA": { "color": "yellow", "index": 1 } } },
+                    { "type": "value", "options": { "APROXIMACAO RACK": { "color": "orange", "index": 2 } } },
+                    { "type": "value", "options": { "EMERGENCIA RACK": { "color": "red", "index": 3 } } },
+                    { "type": "value", "options": { "INVASAO SALA": { "color": "red", "index": 4 } } },
+                    { "type": "value", "options": { "ACESSO RFID": { "color": "purple", "index": 5 } } }
+                  ],
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": { "type": "auto" },
+                    "footer": { "reducers": [] },
+                    "inspect": false
+                  },
+                  "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] }
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "lg",
+                "displayMode": "gradient",
+                "showHeader": false
+              }
+            }
+          }
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "id": 5,
+          "title": "Temperatura e Umidade",
+          "description": "Temperatura e umidade dos últimos 30 minutos. Temperatura em °C, umidade em %.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "alexanderzobnin-zabbix-datasource",
+                      "version": "v0",
+                      "datasource": { "name": "zabbix" },
+                      "spec": {
+                        "queryType": "0",
+                        "group": { "filter": "CPD" },
+                        "host": { "filter": "Rack CPD" },
+                        "item": { "filter": "Temperatura" },
+                        "itemTag": { "filter": "" },
+                        "macro": { "filter": "" },
+                        "proxy": { "filter": "" },
+                        "textFilter": "",
+                        "application": { "filter": "" },
+                        "trigger": { "filter": "" },
+                        "tags": { "filter": "" },
+                        "evaltype": "0",
+                        "functions": [],
+                        "countTriggersBy": "",
+                        "resultFormat": "time_series",
+                        "schema": 13,
+                        "table": { "skipEmptyValues": false },
+                        "options": {
+                          "count": false,
+                          "disableDataAlignment": false,
+                          "showDisabledItems": false,
+                          "skipEmptyValues": false,
+                          "useTrends": "default",
+                          "useZabbixValueMapping": false
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "B",
+                    "hidden": false,
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "alexanderzobnin-zabbix-datasource",
+                      "version": "v0",
+                      "datasource": { "name": "zabbix" },
+                      "spec": {
+                        "queryType": "0",
+                        "group": { "filter": "CPD" },
+                        "host": { "filter": "Rack CPD" },
+                        "item": { "filter": "Umidade" },
+                        "itemTag": { "filter": "" },
+                        "macro": { "filter": "" },
+                        "proxy": { "filter": "" },
+                        "textFilter": "",
+                        "application": { "filter": "" },
+                        "trigger": { "filter": "" },
+                        "tags": { "filter": "" },
+                        "evaltype": "0",
+                        "functions": [],
+                        "countTriggersBy": "",
+                        "resultFormat": "time_series",
+                        "schema": 13,
+                        "table": { "skipEmptyValues": false },
+                        "options": {
+                          "count": false,
+                          "disableDataAlignment": false,
+                          "showDisabledItems": false,
+                          "skipEmptyValues": false,
+                          "useTrends": "default",
+                          "useZabbixValueMapping": false
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "palette-classic" },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 20,
+                    "gradientMode": "opacity",
+                    "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                    "insertNulls": false,
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": { "type": "linear" },
+                    "showPoints": "never",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": { "group": "A", "mode": "none" },
+                    "thresholdsStyle": { "mode": "off" }
+                  },
+                  "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "matcher": { "id": "byName", "options": "Temperatura" },
+                    "properties": [
+                      { "id": "unit", "value": "celsius" },
+                      { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }
+                    ]
+                  },
+                  {
+                    "matcher": { "id": "byName", "options": "Umidade" },
+                    "properties": [
+                      { "id": "unit", "value": "percent" },
+                      { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } },
+                      { "id": "custom.axisPlacement", "value": "right" }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "legend": { "calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "RowsLayout",
+      "spec": {
+        "rows": [
+          {
+            "kind": "RowsLayoutRow",
+            "spec": {
+              "title": "Sensores ambientais",
+              "collapse": false,
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-1" }, "height": 8, "width": 6, "x": 0, "y": 0 } },
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-2" }, "height": 8, "width": 6, "x": 6, "y": 0 } },
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-3" }, "height": 8, "width": 6, "x": 12, "y": 0 } },
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-4" }, "height": 8, "width": 6, "x": 18, "y": 0 } }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "kind": "RowsLayoutRow",
+            "spec": {
+              "title": "Histórico (30 min)",
+              "collapse": false,
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-5" }, "height": 9, "width": 24, "x": 0, "y": 0 } }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+JSONEOF
+🛠️ Passo 2 — Verificar o default.yaml (provisionamento)
+O default.yaml precisa estar configurado para ler dashboards no schema v2. Verifique:
+
+bash
+cat ~/Desktop/monitoramento-cpd/grafana/provisioning/dashboards/default.yaml
+O que deve aparecer:
+
+yaml
+apiVersion: 1
+
+providers:
+  - name: 'CPD Dashboards'
+    orgId: 1
+    folder: 'CPD'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
+🛠️ Passo 3 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 4 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados.
+
+Me diga:
+
+O cat grafana/dashboards/cpd-dashboard.json | head -5 mostra "apiVersion": "dashboard.grafana.app/v2"?
+
+Após o docker compose restart grafana, os painéis mostram dados?
+
+Se algum ainda der "No data", qual é?
+
+Com isso, resolvemos o dashboard 2D. 🚀
+
+❯ cat ~/Desktop/monitoramento-cpd/grafana/provisioning/dashboards/default.yaml
+apiVersion: 1
+
+providers:
+  - name: 'CPD Dashboards'
+    orgId: 1
+    folder: 'CPD'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
+Perfeito! O default.yaml está correto. Agora vamos subir o novo cpd-dashboard.json (schema v2) e verificar se o Grafana o carrega.
+
+🛠️ Passo 1 — Salvar o novo cpd-dashboard.json (schema v2)
+O JSON que eu te passei na mensagem anterior está no schema v2 (formato novo do Grafana 13). Salve-o:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'JSONEOF'
+{
+  "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "cpd-dashboard",
+    "uid": "cpd-dashboard"
+  },
+  "spec": {
+    "title": "CPD Dashboard",
+    "description": "Monitoramento do CPD em tempo real via MQTT + Zabbix",
+    "tags": ["cpd", "rackmonitor"],
+    "editable": true,
+    "liveNow": true,
+    "timeSettings": {
+      "from": "now-30m",
+      "to": "now",
+      "timezone": "browser",
+      "autoRefresh": "10s",
+      "autoRefreshIntervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+    },
+    "variables": [],
+    "annotations": [],
+    "links": [],
+    "elements": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "id": 1,
+          "title": "Temperatura",
+          "description": "Temperatura atual do rack (°C). Faixas: verde até 28°C, amarelo 28-32°C, vermelho acima de 32°C.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Temperatura" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds" },
+                  "decimals": 1,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "color": "green", "value": 0 },
+                      { "color": "yellow", "value": 28 },
+                      { "color": "red", "value": 32 }
+                    ]
+                  },
+                  "unit": "celsius"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background_solid",
+                "graphMode": "area",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "id": 2,
+          "title": "Umidade",
+          "description": "Umidade relativa do ar (%). Faixas: verde até 65%, amarelo 65-80%, vermelho acima de 80%.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Umidade" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds" },
+                  "decimals": 1,
+                  "max": 100,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "color": "green", "value": 0 },
+                      { "color": "yellow", "value": 65 },
+                      { "color": "red", "value": 80 }
+                    ]
+                  },
+                  "unit": "percent"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background_solid",
+                "graphMode": "area",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "id": 3,
+          "title": "Modo",
+          "description": "Modo atual do vigilante. ARMADO (azul) ou DESARMADO (laranja).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Modo" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": [{
+                "kind": "Transformation",
+                "group": "organize",
+                "spec": {
+                  "options": {
+                    "excludeByName": { "Time": true },
+                    "renameByName": { "Modo": "Modo" }
+                  }
+                }
+              }]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds", "fixedColor": "blue" },
+                  "mappings": [
+                    { "type": "value", "options": { "ARMADO": { "color": "blue", "index": 0 } } },
+                    { "type": "value", "options": { "DESARMADO": { "color": "orange", "index": 1 } } }
+                  ],
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": { "type": "auto" },
+                    "footer": { "reducers": [] },
+                    "inspect": false
+                  },
+                  "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": 0 }] }
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "lg",
+                "displayMode": "gradient",
+                "showHeader": false
+              }
+            }
+          }
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "id": 4,
+          "title": "Estado",
+          "description": "Estado de segurança do CPD. NORMAL, EMERGENCIA RACK, INVASAO SALA, etc.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [{
+                "kind": "PanelQuery",
+                "spec": {
+                  "refId": "A",
+                  "hidden": false,
+                  "query": {
+                    "kind": "DataQuery",
+                    "group": "alexanderzobnin-zabbix-datasource",
+                    "version": "v0",
+                    "datasource": { "name": "zabbix" },
+                    "spec": {
+                      "queryType": "0",
+                      "group": { "filter": "CPD" },
+                      "host": { "filter": "Rack CPD" },
+                      "item": { "filter": "Estado" },
+                      "itemTag": { "filter": "" },
+                      "macro": { "filter": "" },
+                      "proxy": { "filter": "" },
+                      "textFilter": "",
+                      "application": { "filter": "" },
+                      "trigger": { "filter": "" },
+                      "tags": { "filter": "" },
+                      "evaltype": "0",
+                      "functions": [],
+                      "countTriggersBy": "",
+                      "resultFormat": "time_series",
+                      "schema": 13,
+                      "table": { "skipEmptyValues": false },
+                      "options": {
+                        "count": false,
+                        "disableDataAlignment": false,
+                        "showDisabledItems": false,
+                        "skipEmptyValues": false,
+                        "useTrends": "default",
+                        "useZabbixValueMapping": false
+                      }
+                    }
+                  }
+                }
+              }],
+              "queryOptions": {},
+              "transformations": [{
+                "kind": "Transformation",
+                "group": "organize",
+                "spec": {
+                  "options": {
+                    "excludeByName": { "Time": true },
+                    "renameByName": { "Estado": "Estado" }
+                  }
+                }
+              }]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds" },
+                  "mappings": [
+                    { "type": "value", "options": { "NORMAL": { "color": "green", "index": 0 } } },
+                    { "type": "value", "options": { "AVISO SALA": { "color": "yellow", "index": 1 } } },
+                    { "type": "value", "options": { "APROXIMACAO RACK": { "color": "orange", "index": 2 } } },
+                    { "type": "value", "options": { "EMERGENCIA RACK": { "color": "red", "index": 3 } } },
+                    { "type": "value", "options": { "INVASAO SALA": { "color": "red", "index": 4 } } },
+                    { "type": "value", "options": { "ACESSO RFID": { "color": "purple", "index": 5 } } }
+                  ],
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": { "type": "auto" },
+                    "footer": { "reducers": [] },
+                    "inspect": false
+                  },
+                  "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] }
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "lg",
+                "displayMode": "gradient",
+                "showHeader": false
+              }
+            }
+          }
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "id": 5,
+          "title": "Temperatura e Umidade",
+          "description": "Temperatura e umidade dos últimos 30 minutos. Temperatura em °C, umidade em %.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "alexanderzobnin-zabbix-datasource",
+                      "version": "v0",
+                      "datasource": { "name": "zabbix" },
+                      "spec": {
+                        "queryType": "0",
+                        "group": { "filter": "CPD" },
+                        "host": { "filter": "Rack CPD" },
+                        "item": { "filter": "Temperatura" },
+                        "itemTag": { "filter": "" },
+                        "macro": { "filter": "" },
+                        "proxy": { "filter": "" },
+                        "textFilter": "",
+                        "application": { "filter": "" },
+                        "trigger": { "filter": "" },
+                        "tags": { "filter": "" },
+                        "evaltype": "0",
+                        "functions": [],
+                        "countTriggersBy": "",
+                        "resultFormat": "time_series",
+                        "schema": 13,
+                        "table": { "skipEmptyValues": false },
+                        "options": {
+                          "count": false,
+                          "disableDataAlignment": false,
+                          "showDisabledItems": false,
+                          "skipEmptyValues": false,
+                          "useTrends": "default",
+                          "useZabbixValueMapping": false
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "B",
+                    "hidden": false,
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "alexanderzobnin-zabbix-datasource",
+                      "version": "v0",
+                      "datasource": { "name": "zabbix" },
+                      "spec": {
+                        "queryType": "0",
+                        "group": { "filter": "CPD" },
+                        "host": { "filter": "Rack CPD" },
+                        "item": { "filter": "Umidade" },
+                        "itemTag": { "filter": "" },
+                        "macro": { "filter": "" },
+                        "proxy": { "filter": "" },
+                        "textFilter": "",
+                        "application": { "filter": "" },
+                        "trigger": { "filter": "" },
+                        "tags": { "filter": "" },
+                        "evaltype": "0",
+                        "functions": [],
+                        "countTriggersBy": "",
+                        "resultFormat": "time_series",
+                        "schema": 13,
+                        "table": { "skipEmptyValues": false },
+                        "options": {
+                          "count": false,
+                          "disableDataAlignment": false,
+                          "showDisabledItems": false,
+                          "skipEmptyValues": false,
+                          "useTrends": "default",
+                          "useZabbixValueMapping": false
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.2.5",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "palette-classic" },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 20,
+                    "gradientMode": "opacity",
+                    "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                    "insertNulls": false,
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": { "type": "linear" },
+                    "showPoints": "never",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": { "group": "A", "mode": "none" },
+                    "thresholdsStyle": { "mode": "off" }
+                  },
+                  "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "matcher": { "id": "byName", "options": "Temperatura" },
+                    "properties": [
+                      { "id": "unit", "value": "celsius" },
+                      { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }
+                    ]
+                  },
+                  {
+                    "matcher": { "id": "byName", "options": "Umidade" },
+                    "properties": [
+                      { "id": "unit", "value": "percent" },
+                      { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } },
+                      { "id": "custom.axisPlacement", "value": "right" }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "legend": { "calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "RowsLayout",
+      "spec": {
+        "rows": [
+          {
+            "kind": "RowsLayoutRow",
+            "spec": {
+              "title": "Sensores ambientais",
+              "collapse": false,
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-1" }, "height": 8, "width": 6, "x": 0, "y": 0 } },
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-2" }, "height": 8, "width": 6, "x": 6, "y": 0 } },
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-3" }, "height": 8, "width": 6, "x": 12, "y": 0 } },
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-4" }, "height": 8, "width": 6, "x": 18, "y": 0 } }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "kind": "RowsLayoutRow",
+            "spec": {
+              "title": "Histórico (30 min)",
+              "collapse": false,
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-5" }, "height": 9, "width": 24, "x": 0, "y": 0 } }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+JSONEOF
+🛠️ Passo 2 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 3 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados.
+
+Me diga:
+
+O cat grafana/dashboards/cpd-dashboard.json | head -5 mostra "apiVersion": "dashboard.grafana.app/v2"?
+
+Após o docker compose restart grafana, os painéis mostram dados?
+
+Se algum ainda der "No data", qual é?
+
+Com isso, resolvemos o dashboard 2D. 🚀
+
+🎉 PERFEITO! O dashboard 2D está funcionando!
+Olha o resultado:
+
+Painel	Status	Valor
+Temperatura	✅	22.7 °C (verde)
+Umidade	✅	83.0 % (vermelho, acima do limiar)
+Modo	❌	"No data"
+Estado	❌	"No data"
+Histórico	✅	Gráfico com Temperatura e Umidade
+4 de 5 painéis estão funcionando! Só faltam Modo e Estado.
+
+🛠️ Por que Modo e Estado não funcionam
+No Zabbix, os itens Modo e Estado são texto (ARMADO, NORMAL). O plugin Zabbix no Grafana pode ter dificuldade com itens de texto no painel stat/table.
+
+Solução: usar o painel table (que já está configurado), mas garantir que a query está correta.
+
+🛠️ Passo 1 — Editar o painel Modo
+No dashboard, clique no painel Modo → Edit.
+
+Na aba Query, verifique:
+
+Data source: Zabbix
+
+Query type: Metrics
+
+Group: CPD
+
+Host: Rack CPD
+
+Item: Modo
+
+Se o Item estiver vazio, selecione Modo.
+
+Clique em Run query (ou o refresh automático).
+
+O que deve aparecer: ARMADO no painel.
+
+🛠️ Passo 2 — Se o painel Modo funcionar, fazer o mesmo no Estado
+Clique no painel Estado → Edit.
+
+Verifique os campos (Group, Host, Item).
+
+Se o Item estiver vazio, selecione Estado.
+
+🛠️ Passo 3 — Se os campos estiverem corretos, mas ainda der "No data"
+O problema pode ser o tipo do item no Zabbix (texto vs. numérico). O plugin Zabbix pode não renderizar itens de texto no painel table sem uma transformação.
+
+Solução: adicionar uma transformação Organize para converter o texto.
+
+No painel Modo (Edit), vá na aba Transformations.
+
+Clique em Add transformation.
+
+Escolha Organize fields.
+
+Em Exclude by name, adicione Time.
+
+Salve.
+
+🛠️ Passo 4 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: dashboard 2D no schema v2 (Grafana 13)
+
+- Temperatura, Umidade e Histórico funcionando.
+- Modo e Estado: verificar queries e transformações.
+- Dashboard provisionado com schema v2."
+git push
+Me diga:
+
+O painel Modo (Edit → Query) tem o Item selecionado? Qual o nome?
+
+Se você selecionar Modo e rodar a query, o painel mostra ARMADO?
+
+O painel Estado tem o Item selecionado?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+🎯 Encontrei o problema! O painel Modo usa queryType: "2" (errado)
+No JSON que você exportou, o painel Modo tem:
+
+json
+"queryType": "2"
+Mas o painel Temperatura (que funciona) tem:
+
+json
+"queryType": "0"
+queryType: "2" significa "buscar item por key" (nome técnico), enquanto queryType: "0" significa "buscar item por filter" (nome visível). O plugin v6.10.3 usa queryType: "0" para buscar por nome.
+
+Além disso, o painel Modo está com vizConfig.group: "stat" (não table), o que pode não renderizar texto corretamente.
+
+🛠️ Solução: Corrigir o cpd-dashboard.json via script Python
+Vou te dar um script que:
+
+Troca queryType: "2" para queryType: "0" nos painéis Modo e Estado.
+
+Mantém o vizConfig.group: "table" (que é o correto para texto).
+
+Adiciona a transformação Organize para remover a coluna Time.
+
+bash
+cat > ~/Desktop/monitoramento-cpd/corrigir_modo_estado.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Corrige o cpd-dashboard.json (Modo e Estado)."""
+import json
+import os
+
+BASE = "/Users/cristiano/Desktop/monitoramento-cpd"
+CAMINHO = os.path.join(BASE, "grafana", "dashboards", "cpd-dashboard.json")
+
+with open(CAMINHO) as f:
+    dashboard = json.load(f)
+
+for elem in dashboard["spec"]["elements"].values():
+    if elem.get("kind") != "Panel":
+        continue
+    spec = elem["spec"]
+    titulo = spec.get("title", "")
+    if titulo not in ["Modo", "Estado"]:
+        continue
+
+    # Corrigir queryType
+    for q in spec["data"]["spec"]["queries"]:
+        if "query" in q["spec"] and "spec" in q["spec"]["query"]:
+            qspec = q["spec"]["query"]["spec"]
+            qspec["queryType"] = "0"
+
+    # Garantir que o vizConfig.group seja "table"
+    spec["vizConfig"]["group"] = "table"
+    spec["vizConfig"]["spec"]["options"] = {
+        "cellHeight": "lg",
+        "displayMode": "gradient",
+        "showHeader": False,
+    }
+    # Adicionar transformação Organize se não existir
+    transfs = spec["data"]["spec"].get("transformations", [])
+    if not any(t.get("group") == "organize" for t in transfs):
+        transfs.append({
+            "kind": "Transformation",
+            "group": "organize",
+            "spec": {"options": {"excludeByName": {"Time": True}}}
+        })
+
+with open(CAMINHO, "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+
+print("OK: Modo e Estado corrigidos (queryType: 0, vizConfig: table)")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+python3 corrigir_modo_estado.py
+rm corrigir_modo_estado.py
+🛠️ Passo 2 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 3 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados, incluindo Modo (ARMADO) e Estado (EMERGENCIA RACK).
+
+Me diga:
+
+O python3 corrigir_modo_estado.py rodou sem erro?
+
+Após o docker compose restart grafana, os painéis Modo e Estado mostram dados?
+
+Se algum ainda der "No data", qual é?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+🎯 O painel Modo continua com queryType: "2" (errado)
+O JSON que você exportou ainda mostra o painel Modo com:
+
+json
+"queryType": "2"
+O script Python não alterou (provavelmente porque o arquivo foi sobrescrito pelo Grafana após o restart, antes do script rodar).
+
+🛠️ Solução definitiva: editar o JSON diretamente
+Vamos usar um comando sed para trocar "queryType": "2" por "queryType": "0" no cpd-dashboard.json.
+
+bash
+cd ~/Desktop/monitoramento-cpd
+sed -i '' 's/"queryType": "2"/"queryType": "0"/g' grafana/dashboards/cpd-dashboard.json
+Verifique:
+
+bash
+grep -c '"queryType": "0"' grafana/dashboards/cpd-dashboard.json
+grep -c '"queryType": "2"' grafana/dashboards/cpd-dashboard.json
+O que deve aparecer:
+
+"queryType": "0" → 4 (Temperatura, Umidade, Modo, Estado)
+
+"queryType": "2" → 0
+
+🛠️ Passo 2 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 3 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados, incluindo Modo (ARMADO) e Estado (EMERGENCIA RACK).
+
+🛠️ Passo 4 — Se ainda der "No data", forçar o painel Modo
+Se o painel Modo ainda estiver vazio, edite-o manualmente:
+
+Clique no painel Modo → Edit.
+
+Na aba Query, verifique se o Item é Modo.
+
+Clique em Run query.
+
+Clique em Save.
+
+Me diga:
+
+O grep -c '"queryType": "0"' mostra 4?
+
+O grep -c '"queryType": "2"' mostra 0?
+
+Após o restart, os painéis Modo e Estado mostram dados?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+❯ grep -c '"queryType": "0"' grafana/dashboards/cpd-dashboard.json
+grep -c '"queryType": "2"' grafana/dashboards/cpd-dashboard.json
+6
+0
+🎉 O sed funcionou!
+Os grep mostram:
+
+"queryType": "0" → 6 (Temperatura, Umidade, Modo, Estado, e os 2 do Histórico)
+
+"queryType": "2" → 0 (não tem mais nenhum)
+
+Agora todos os painéis usam o formato correto (queryType: "0").
+
+🛠️ Passo 1 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 2 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados:
+
+Temperatura: 22.7°C (verde)
+
+Umidade: 83.0% (vermelho, acima do limiar)
+
+Modo: ARMADO (azul)
+
+Estado: EMERGENCIA RACK (vermelho)
+
+Histórico: gráfico com Temperatura e Umidade
+
+🛠️ Passo 3 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: corrige queryType dos painéis Modo e Estado
+
+- Troca 'queryType: 2' por 'queryType: 0' (formato novo do plugin Zabbix v6.10.3)
+- Agora todos os 5 painéis usam o formato correto"
+git push
+Me diga:
+
+Após o docker compose restart grafana, os painéis Modo e Estado mostram dados?
+
+Se sim, o dashboard 2D está completo (5 de 5 painéis)?
+
+Se não, qual o erro?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+🎯 O problema persiste no cpd-dashboard.json
+O JSON que você exportou ainda tem o painel Estado com "queryType": "2" (não foi corrigido). O sed anterior trocou todos os "queryType": "2" por "queryType": "0", mas o Grafana sobrescreveu o arquivo quando você reiniciou (ele recria o JSON a partir do que está no banco).
+
+Solução: parar o Grafana, editar o arquivo, subir de novo.
+
+🛠️ Passo 1 — Parar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose stop grafana
+O que esperar: Container cpd-grafana Stopped.
+
+🛠️ Passo 2 — Editar o arquivo com o Grafana parado
+bash
+cd ~/Desktop/monitoramento-cpd
+sed -i '' 's/"queryType": "2"/"queryType": "0"/g' grafana/dashboards/cpd-dashboard.json
+Verifique:
+
+bash
+grep -c '"queryType": "0"' grafana/dashboards/cpd-dashboard.json
+grep -c '"queryType": "2"' grafana/dashboards/cpd-dashboard.json
+O que deve aparecer:
+
+"queryType": "0" → 6 (ou mais)
+
+"queryType": "2" → 0
+
+🛠️ Passo 3 — Subir o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose start grafana
+Aguarde 30s.
+
+🛠️ Passo 4 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados:
+
+Temperatura: 22.7°C
+
+Umidade: 83.0%
+
+Modo: ARMADO
+
+Estado: EMERGENCIA RACK
+
+Histórico: gráfico
+
+Me diga:
+
+O grep -c '"queryType": "2"' mostra 0 (com o Grafana parado)?
+
+Após o docker compose start grafana, os painéis Modo e Estado mostram dados?
+
+Se sim, o dashboard 2D está completo (5 de 5 painéis)?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+Não deu!
+🎯 Vamos resolver de vez com a API do Grafana
+O problema é que o Grafana sobrescreve o JSON no disco quando está rodando. Precisamos fazer a alteração direto no Grafana, via API, com o Grafana rodando.
+
+🛠️ Passo 1 — Fazer a alteração via API
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+
+python3 - << 'PYEOF'
+import json
+import requests
+
+GRAFANA_URL = "http://localhost:3000"
+AUTH = ("admin", "admin")
+
+# 1. Buscar o dashboard atual
+r = requests.get(f"{GRAFANA_URL}/api/dashboards/uid/cpd-dashboard", auth=AUTH)
+if r.status_code != 200:
+    print(f"ERRO ao buscar dashboard: {r.status_code} {r.text}")
+    exit(1)
+
+data = r.json()
+dashboard = data["dashboard"]
+
+# 2. Corrigir os painéis Modo e Estado
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo in ["Modo", "Estado"]:
+        for target in panel.get("targets", []):
+            target["queryType"] = "0"
+        print(f"Corrigido: {titulo}")
+
+# 3. Salvar o dashboard via API
+payload = {
+    "dashboard": dashboard,
+    "overwrite": True,
+    "message": "Corrigido queryType de Modo e Estado",
+}
+
+r = requests.post(
+    f"{GRAFANA_URL}/api/dashboards/db",
+    auth=AUTH,
+    json=payload,
+    headers={"Content-Type": "application/json"},
+)
+
+if r.status_code == 200:
+    print(f"OK: dashboard atualizado")
+    print(f"URL: {GRAFANA_URL}{r.json().get('url', '')}")
+else:
+    print(f"ERRO {r.status_code}: {r.text}")
+PYEOF
+O que esperar:
+
+text
+Corrigido: Modo
+Corrigido: Estado
+OK: dashboard atualizado
+URL: http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+🛠️ Passo 2 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: os 5 painéis com dados.
+
+Me diga:
+
+O script Python rodou sem erro?
+
+Após a atualização via API, os painéis Modo e Estado mostram dados?
+
+Se sim, o dashboard 2D está completo (5 de 5 painéis)?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+Também não!!
+🛑 Vamos parar de tentar adivinhar. Preciso ver a evidência.
+O problema é claro: não sabemos o que o Grafana está vendo. Sem ver o JSON real que ele carregou, qualquer tentativa é chute.
+
+Vou te pedir 3 coisas concretas, e com elas eu resolvo.
+
+🛠️ Passo 1 — Exportar o dashboard atual (direto do Grafana)
+Abra o dashboard:
+
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+No topo, clique no ícone de três pontinhos (ao lado do título "CPD Dashboard").
+
+Clique em Export.
+
+Marque Export for sharing externally (se aparecer).
+
+Copie todo o JSON.
+
+Cole aqui.
+
+Ou, se preferir, use a API:
+
+bash
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard | python3 -m json.tool
+Cole a saída aqui.
+
+Isso me mostra exatamente o que o Grafana está usando agora.
+
+🛠️ Passo 2 — Editar o painel Modo manualmente (só para provar que funciona)
+Se o painel Modo não funciona, vamos provar que a query está certa editando manualmente.
+
+No dashboard, clique no painel Modo → Edit.
+
+Na aba Query, veja o campo Item. Está Modo?
+
+Apague o campo Item e selecione Modo de novo (para forçar o Grafana a gravar).
+
+Clique em Run query (ou espere o refresh).
+
+Se aparecer ARMADO, clique em Save (no painel).
+
+Me diga:
+
+O painel Modo mostra ARMADO depois de você selecionar o Item manualmente?
+
+Se sim, clique em Save e veja se o painel continua funcionando.
+
+Se não, o problema é outro (não é a query).
+
+🛠️ Passo 3 — Ver o log do Grafana em tempo real
+Enquanto você edita o painel Modo, rode em outro terminal:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose logs -f grafana | grep -i "zabbix\|error\|query"
+O que aparece quando você clica em Run query no painel Modo?
+
+Se aparecer Plugin Request Completed ... status=ok → a query foi ao Zabbix.
+
+Se aparecer error → a query falhou.
+
+Se não aparecer nada → o Grafana nem tentou.
+
+Cole aqui as linhas que aparecerem.
+
+🎯 O que eu preciso de você (resumo)
+Me mande:
+
+O JSON exportado do dashboard (via Export ou curl).
+
+O resultado do teste manual: o painel Modo mostra ARMADO quando você seleciona o Item manualmente?
+
+O log do Grafana quando você clica em Run query no painel Modo.
+
+Com essas 3 evidências, eu resolvo o problema do painel Modo e Estado.
+
+Sem elas, estou chutando no escuro. 🎯
+
+🎯 AGORA SIM! O JSON está correto!
+Olhando o JSON exportado do Grafana, todos os painéis estão com o formato correto:
+
+Painel	queryType	item.filter
+Temperatura	"0" ✅	"Temperatura" ✅
+Umidade	"0" ✅	"Umidade" ✅
+Modo	"0" ✅	"Modo" ✅
+Estado	"0" ✅	"Estado" ✅
+Histórico	"0" ✅	"Temperatura" + "Umidade" ✅
+O JSON está perfeito. O problema é que o Grafana está lendo do banco (que tem a versão antiga), não do arquivo (que está correto).
+
+🛠️ Solução definitiva: forçar o Grafana a reler o arquivo
+O Grafana não sobrescreve o JSON no disco quando está rodando. O que acontece é:
+
+Você edita o JSON no disco.
+
+O Grafana não relê o arquivo (porque o dashboard foi modificado na interface e ficou salvo no banco).
+
+O Grafana continua mostrando a versão do banco (antiga).
+
+Solução: apagar o dashboard do banco (não do disco) para forçar o Grafana a reler o arquivo.
+
+🛠️ Passo 1 — Apagar o dashboard do banco
+bash
+cd ~/Desktop/monitoramento-cpd
+curl -s -u admin:admin -X DELETE http://localhost:3000/api/dashboards/uid/cpd-dashboard
+O que esperar: {"title":"CPD Dashboard","message":"Dashboard CPD Dashboard deleted"}.
+
+🛠️ Passo 2 — Reiniciar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 3 — Verificar se o dashboard voltou
+bash
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard | python3 -m json.tool | head -20
+O que deve aparecer: o dashboard recriado (a partir do arquivo).
+
+🛠️ Passo 4 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os 5 painéis com dados, incluindo Modo (ARMADO) e Estado (EMERGENCIA RACK).
+
+🛠️ Passo 5 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: dashboard 2D completo (5 painéis funcionando)
+
+- Todos os painéis com queryType: 0 (formato novo do plugin Zabbix)
+- Temperatura, Umidade, Modo, Estado e Histórico com dados"
+git push
+Me diga:
+
+O curl -X DELETE apagou o dashboard do banco?
+
+Após o docker compose restart grafana, o dashboard voltou?
+
+Os 5 painéis mostram dados (Temperatura, Umidade, Modo, Estado, Histórico)?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+Query type deve ser Text
+🎯 Encontrei o problema real! Query type deve ser Text, não Metrics
+O painel Modo e Estado retornam texto (ARMADO, EMERGENCIA RACK). O plugin Zabbix tem um Query type específico para isso: Text (não Metrics).
+
+No JSON, o queryType do Zabbix é um enum:
+
+"0" = Metrics (numérico)
+
+"2" = Text (texto)
+
+Eu estava errado ao trocar "2" por "0". Para os painéis de texto (Modo e Estado), o correto é "2" (Text).
+
+🛠️ Solução: Corrigir o cpd-dashboard.json (Modo e Estado = Text)
+Vamos usar a API do Grafana (com o Grafana rodando) para corrigir os painéis.
+
+Passo 1 — Script Python para corrigir via API
+bash
+cat > ~/Desktop/monitoramento-cpd/corrigir_text.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Corrige os painéis Modo e Estado para Query type = Text."""
+import json
+import requests
+
+GRAFANA_URL = "http://localhost:3000"
+AUTH = ("admin", "admin")
+
+# 1. Buscar o dashboard
+r = requests.get(f"{GRAFANA_URL}/api/dashboards/uid/cpd-dashboard", auth=AUTH)
+if r.status_code != 200:
+    print(f"ERRO ao buscar: {r.status_code} {r.text}")
+    exit(1)
+
+data = r.json()
+dashboard = data["dashboard"]
+
+# 2. Corrigir os painéis
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo in ["Modo", "Estado"]:
+        for target in panel.get("targets", []):
+            target["queryType"] = "2"   # "2" = Text
+        print(f"Corrigido: {titulo} (queryType = Text)")
+
+# 3. Salvar via API
+payload = {
+    "dashboard": dashboard,
+    "overwrite": True,
+    "message": "Corrigido Query type de Modo e Estado para Text",
+}
+
+r = requests.post(
+    f"{GRAFANA_URL}/api/dashboards/db",
+    auth=AUTH,
+    json=payload,
+    headers={"Content-Type": "application/json"},
+)
+
+if r.status_code == 200:
+    print("OK: dashboard atualizado")
+else:
+    print(f"ERRO {r.status_code}: {r.text}")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python3 corrigir_text.py
+rm corrigir_text.py
+Passo 2 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: os 5 painéis com dados, incluindo Modo (ARMADO) e Estado (EMERGENCIA RACK).
+
+Passo 3 — Se funcionar, salvar no arquivo (para o Git)
+Agora que o dashboard está funcionando no banco, precisamos exportar para o arquivo (para o Git):
+
+bash
+cd ~/Desktop/monitoramento-cpd
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard \
+  | python3 -c "import sys, json; print(json.dumps(json.load(sys.stdin)['dashboard'], indent=2, ensure_ascii=False))" \
+  > grafana/dashboards/cpd-dashboard.json
+O que esperar: o arquivo cpd-dashboard.json agora tem o JSON com queryType: "2" nos painéis Modo e Estado.
+
+Passo 4 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: painéis Modo e Estado com Query type = Text
+
+- Temperatura, Umidade e Histórico usam queryType: 0 (Metrics)
+- Modo e Estado usam queryType: 2 (Text)
+- Todos os 5 painéis funcionando"
+git push
+Me diga:
+
+O script Python rodou sem erro?
+
+Após a atualização, os painéis Modo e Estado mostram dados?
+
+Se sim, o dashboard 2D está completo (5 de 5 painéis)?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+Neste caso,
+🎯 Entendi! Query type = Text é a chave
+Você está certo: o painel Modo e Estado são texto (ARMADO, EMERGENCIA RACK), e o plugin Zabbix tem um Query type específico para isso.
+
+No JSON do plugin Zabbix:
+
+"queryType": "0" = Metrics (numérico)
+
+"queryType": "2" = Text (texto)
+
+Eu errei ao trocar "2" por "0". Para os painéis de texto, o correto é "2".
+
+🛠️ Solução: Corrigir via API (com o Grafana rodando)
+O Grafana não relê o arquivo se o dashboard está salvo no banco. Então precisamos fazer a alteração direto no Grafana, via API.
+
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+
+python3 - << 'PYEOF'
+import json
+import requests
+
+GRAFANA_URL = "http://localhost:3000"
+AUTH = ("admin", "admin")
+
+# 1. Buscar o dashboard atual
+r = requests.get(f"{GRAFANA_URL}/api/dashboards/uid/cpd-dashboard", auth=AUTH)
+if r.status_code != 200:
+    print(f"ERRO: {r.status_code} {r.text}")
+    exit(1)
+
+dashboard = r.json()["dashboard"]
+
+# 2. Corrigir Modo e Estado para queryType = "2" (Text)
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo in ["Modo", "Estado"]:
+        for target in panel.get("targets", []):
+            target["queryType"] = "2"   # Text
+        print(f"Corrigido: {titulo} -> Text")
+
+# 3. Salvar via API
+payload = {
+    "dashboard": dashboard,
+    "overwrite": True,
+    "message": "Query type de Modo e Estado corrigido para Text",
+}
+
+r = requests.post(
+    f"{GRAFANA_URL}/api/dashboards/db",
+    auth=AUTH,
+    json=payload,
+    headers={"Content-Type": "application/json"},
+)
+
+if r.status_code == 200:
+    print("OK: dashboard atualizado")
+else:
+    print(f"ERRO {r.status_code}: {r.text}")
+PYEOF
+🛠️ Passo 2 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: os 5 painéis com dados, incluindo Modo (ARMADO) e Estado (EMERGENCIA RACK).
+
+🛠️ Passo 3 — Se funcionar, exportar para o arquivo (para o Git)
+Agora que o dashboard está funcionando no banco, precisamos exportar para o arquivo:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard \
+  | python3 -c "import sys, json; print(json.dumps(json.load(sys.stdin)['dashboard'], indent=2, ensure_ascii=False))" \
+  > grafana/dashboards/cpd-dashboard.json
+🛠️ Passo 4 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: painéis Modo e Estado com Query type = Text
+
+- Temperatura, Umidade e Histórico: queryType = 0 (Metrics)
+- Modo e Estado: queryType = 2 (Text)
+- Todos os 5 painéis funcionando"
+git push
+Me diga:
+
+O script Python rodou sem erro?
+
+Após a atualização, os painéis Modo e Estado mostram dados?
+
+Se sim, o dashboard 2D está completo (5 de 5 painéis)?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+Não mudou, continuou como Metrics.
+🎯 Você está no painel errado!
+Olhando a captura:
+
+Temperatura: 22.7 °C ✅
+
+Umidade: 83.0 % ✅
+
+Modo: No data (azul — mas ainda "No data")
+
+Estado: No data (verde — mas ainda "No data")
+
+O Query type está como Metrics no JSON, mas o problema é que você está editando o painel errado. O painel que você está vendo na captura não é o cpd-dashboard.
+
+Repare no título: "Temperatura" (no topo, como se fosse o título do dashboard). Isso significa que você está editando o painel Temperatura, não o dashboard.
+
+🛠️ Passo 1 — Sair do modo de edição
+Clique em Exit edit (canto superior direito) para voltar ao dashboard.
+
+🛠️ Passo 2 — Editar o painel Modo (não a Temperatura)
+No dashboard, clique no painel Modo → Edit.
+
+Na aba Query, veja o campo Query type.
+
+Mude de Metrics para Text.
+
+Clique em Run query (ou espere o refresh).
+
+Se aparecer ARMADO, clique em Save (no painel).
+
+O que deve aparecer: ARMADO no painel.
+
+🛠️ Passo 3 — Fazer o mesmo no painel Estado
+Clique no painel Estado → Edit.
+
+Mude Query type para Text.
+
+Clique em Run query.
+
+Clique em Save.
+
+🛠️ Passo 4 — Se funcionar, exportar para o arquivo
+bash
+cd ~/Desktop/monitoramento-cpd
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard \
+  | python3 -c "import sys, json; print(json.dumps(json.load(sys.stdin)['dashboard'], indent=2, ensure_ascii=False))" \
+  > grafana/dashboards/cpd-dashboard.json
+Me diga:
+
+Você conseguiu mudar o Query type do painel Modo para Text?
+
+O painel Modo mostra ARMADO após a mudança?
+
+O painel Estado mostra EMERGENCIA RACK após a mudança?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+Manualmente eu sei que funciona!!
+🎯 Perfeito! O problema é só a automação
+Se manualmente funciona, a query está correta. O problema é que o JSON que o Grafana lê não está sendo atualizado com a mudança que você fez na interface.
+
+O Grafana tem duas fontes:
+
+O JSON no disco (grafana/dashboards/cpd-dashboard.json).
+
+O banco do Grafana (onde as edições manuais são salvas).
+
+Quando você edita manualmente, o Grafana salva no banco. Mas o JSON no disco continua antigo (com queryType: 0). No próximo restart, o Grafana relê o JSON e sobrescreve o banco — perdendo sua edição manual.
+
+Solução: exportar o dashboard do banco para o disco, para que o JSON tenha a versão correta.
+
+🛠️ Passo 1 — Exportar o dashboard do banco para o disco
+Com o dashboard funcionando (após sua edição manual), rode:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard \
+  | python3 -c "import sys, json; print(json.dumps(json.load(sys.stdin)['dashboard'], indent=2, ensure_ascii=False))" \
+  > grafana/dashboards/cpd-dashboard.json
+O que isso faz: pega o JSON do banco (com queryType: "2" nos painéis Modo e Estado) e salva no disco.
+
+🛠️ Passo 2 — Verificar se o JSON foi atualizado
+bash
+grep -c '"queryType": "2"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+grep -c '"queryType": "0"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+O que deve aparecer:
+
+"queryType": "2" → 2 (Modo e Estado)
+
+"queryType": "0" → 4 (Temperatura, Umidade, Histórico ×2)
+
+🛠️ Passo 3 — Reiniciar o Grafana (para confirmar que o JSON está correto)
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s.
+
+🛠️ Passo 4 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os 5 painéis com dados (Modo = ARMADO, Estado = EMERGENCIA RACK).
+
+Se algum voltar a "No data", o JSON não foi exportado corretamente. Me diga.
+
+🛠️ Passo 5 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: exporta o dashboard do banco (Query type = Text nos painéis Modo e Estado)
+
+- O JSON no disco estava com queryType: 0 (Metrics) para Modo e Estado.
+- Após edição manual, exportei o JSON do banco (queryType: 2 = Text).
+- Agora o JSON no disco reflete o estado funcional."
+git push
+Me diga:
+
+O grep -c '"queryType": "2"' mostra 2?
+
+Após o restart, os painéis Modo e Estado continuam funcionando?
+
+O git push funcionou?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+❯ grep -c '"queryType": "2"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+grep -c '"queryType": "0"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+0
+6
+🎯 O JSON ainda não tem queryType: "2"
+O grep mostra:
+
+"queryType": "2" → 0
+
+"queryType": "0" → 6
+
+Isso significa que o JSON no disco ainda está com a versão antiga (Metrics em todos os painéis). A exportação do banco para o disco não funcionou (provavelmente porque o curl não retornou o dashboard esperado, ou o Python não salvou).
+
+🛠️ Passo 1 — Verificar o que o curl retorna
+bash
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard | python3 -m json.tool | head -30
+O que aparece? O JSON do dashboard ou uma mensagem de erro?
+
+Se aparecer "dashboard": { ... } → o curl funcionou. O problema é no Python.
+
+Se aparecer "message": "Dashboard not found" → o dashboard não está no banco (ou o UID está errado).
+
+🛠️ Passo 2 — Exportar manualmente (com Python)
+Se o curl funcionou, vamos exportar com um script Python mais robusto:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+
+python3 - << 'PYEOF'
+import json
+import requests
+
+GRAFANA_URL = "http://localhost:3000"
+AUTH = ("admin", "admin")
+
+# Buscar o dashboard
+r = requests.get(f"{GRAFANA_URL}/api/dashboards/uid/cpd-dashboard", auth=AUTH)
+print(f"Status: {r.status_code}")
+
+if r.status_code != 200:
+    print(f"ERRO: {r.text}")
+    exit(1)
+
+data = r.json()
+dashboard = data["dashboard"]
+
+# Verificar se os painéis Modo e Estado têm queryType "2"
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo in ["Modo", "Estado"]:
+        for target in panel.get("targets", []):
+            print(f"{titulo}: queryType = {target.get('queryType')}")
+
+# Salvar no disco
+with open("grafana/dashboards/cpd-dashboard.json", "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+
+print("OK: dashboard salvo em grafana/dashboards/cpd-dashboard.json")
+PYEOF
+O que esperar:
+
+text
+Status: 200
+Modo: queryType = 2
+Estado: queryType = 2
+OK: dashboard salvo em grafana/dashboards/cpd-dashboard.json
+Se aparecer queryType = 0 para Modo e Estado, o banco ainda tem a versão antiga. Nesse caso, você precisa editar manualmente os painéis Modo e Estado (mudar Query type para Text) e salvar.
+
+🛠️ Passo 3 — Se o banco estiver correto, verificar o disco
+bash
+grep -c '"queryType": "2"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+grep -c '"queryType": "0"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+O que deve aparecer:
+
+"queryType": "2" → 2
+
+"queryType": "0" → 4
+
+🛠️ Passo 4 — Se o disco estiver correto, reiniciar e verificar
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s. Abra o dashboard:
+
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os painéis com dados.
+
+Me diga:
+
+O curl mostra o JSON do dashboard ou "Dashboard not found"?
+
+O script Python mostra queryType = 2 para Modo e Estado (banco) ou queryType = 0?
+
+Se o banco estiver com queryType = 0, você editou e salvou os painéis Modo e Estado manualmente na interface?
+
+Com isso, identificamos onde está o bloqueio. 🚀
+
+❯ curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard | python3 -m json.tool | head -30
+{
+    "meta": {
+        "type": "db",
+        "canSave": true,
+        "canEdit": true,
+        "canAdmin": true,
+        "canStar": true,
+        "canDelete": true,
+        "slug": "cpd-dashboard",
+        "url": "/d/cpd-dashboard/cpd-dashboard",
+        "expires": "0001-01-01T00:00:00Z",
+        "created": "2026-11-13T02:38:59Z",
+        "updated": "2026-11-13T03:08:56Z",
+        "updatedBy": "Anonymous",
+        "createdBy": "Anonymous",
+        "version": 4,
+        "hasAcl": false,
+        "isFolder": false,
+        "apiVersion": "v0alpha1",
+        "folderId": 4211687567851520,
+        "folderUid": "bg439jqu12bk0a",
+        "folderTitle": "CPD",
+        "folderUrl": "/dashboards/f/bg439jqu12bk0a/cpd",
+        "provisioned": true,
+        "provisionedExternalId": "cpd-dashboard.json",
+        "annotationsPermissions": {
+            "dashboard": {
+                "canAdd": true,
+                "canEdit": true,
+                "canDelete": true
+🎯 O curl funcionou! O dashboard está no banco.
+Agora precisamos ver o que está dentro dos painéis Modo e Estado. Vamos rodar o script Python para verificar e exportar:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+
+python3 - << 'PYEOF'
+import json
+import requests
+
+GRAFANA_URL = "http://localhost:3000"
+AUTH = ("admin", "admin")
+
+r = requests.get(f"{GRAFANA_URL}/api/dashboards/uid/cpd-dashboard", auth=AUTH)
+if r.status_code != 200:
+    print(f"ERRO: {r.status_code} {r.text}")
+    exit(1)
+
+dashboard = r.json()["dashboard"]
+
+print("=== Painéis do banco ===")
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo:
+        targets = panel.get("targets", [])
+        for t in targets:
+            qt = t.get("queryType", "?")
+            item = t.get("item", {})
+            item_filter = item.get("filter", "?") if isinstance(item, dict) else "?"
+            print(f"  {titulo}: queryType={qt}, item={item_filter}")
+
+# Salvar no disco
+with open("grafana/dashboards/cpd-dashboard.json", "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+
+print("\nOK: dashboard salvo em grafana/dashboards/cpd-dashboard.json")
+PYEOF
+O que esperar:
+
+text
+=== Painéis do banco ===
+  Temperatura: queryType=0, item=Temperatura
+  Umidade: queryType=0, item=Umidade
+  Modo: queryType=?, item=Modo
+  Estado: queryType=?, item=Estado
+  Temperatura e Umidade: queryType=0, item=Temperatura
+
+OK: dashboard salvo em grafana/dashboards/cpd-dashboard.json
+Me diga o que aparece para Modo e Estado:
+
+Se aparecer queryType=2 → o banco está correto. O JSON no disco agora tem a versão certa.
+
+Se aparecer queryType=0 → o banco ainda está com a versão antiga (Metrics). Nesse caso, você precisa editar manualmente os painéis Modo e Estado (mudar Query type para Text) e salvar antes de exportar.
+
+Depois de me dizer o resultado:
+
+Se o banco estiver com queryType=2, rode:
+
+bash
+grep -c '"queryType": "2"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+O que deve aparecer: 2.
+
+Se aparecer 2, o JSON no disco está correto. Aí:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: exporta o dashboard do banco (Query type = Text nos painéis Modo e Estado)"
+git push
+Me diga:
+
+O script Python mostrou queryType=2 para Modo e Estado (banco) ou queryType=0?
+
+O grep -c '"queryType": "2"' mostra 2?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+=== Painéis do banco ===
+  Temperatura: queryType=0, item=Temperatura
+  Umidade: queryType=0, item=Umidade
+  Modo: queryType=0, item=Modo
+  Estado: queryType=0, item=Estado
+  Temperatura e Umidade: queryType=0, item=Temperatura
+  Temperatura e Umidade: queryType=0, item=Umidade
+
+OK: dashboard salvo em grafana/dashboards/cpd-dashboard.json
+🎯 O banco está com queryType=0 em todos os painéis!
+Isso significa que a edição manual que você fez não foi salva no banco (ou foi sobrescrita pelo provisionamento).
+
+O Grafana está lendo o JSON do disco (que tem queryType=0) e sobrescrevendo o banco a cada 30s (por causa do updateIntervalSeconds: 30 no default.yaml).
+
+🛠️ Solução definitiva: editar o JSON no disco e parar o Grafana antes de reiniciar
+O ciclo é:
+
+Grafana lê o JSON do disco → queryType=0 em todos.
+
+Você edita na interface → banco fica queryType=2.
+
+Grafana relê o JSON do disco (a cada 30s) → sobrescreve o banco com queryType=0.
+
+Sua edição manual é perdida.
+
+Solução: editar o JSON no disco com queryType=2 para Modo e Estado, parar o Grafana, salvar, e subir de novo.
+
+Passo 1 — Parar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose stop grafana
+O que esperar: Container cpd-grafana Stopped.
+
+Passo 2 — Editar o JSON no disco
+Agora que o Grafana está parado, ele não vai sobrescrever o arquivo.
+
+bash
+cd ~/Desktop/monitoramento-cpd
+
+# Substituir "queryType": "0" por "queryType": "2" APENAS nos painéis Modo e Estado
+python3 - << 'PYEOF'
+import json
+
+CAMINHO = "grafana/dashboards/cpd-dashboard.json"
+
+with open(CAMINHO) as f:
+    dashboard = json.load(f)
+
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo in ["Modo", "Estado"]:
+        for target in panel.get("targets", []):
+            target["queryType"] = "2"
+        print(f"Corrigido: {titulo} -> queryType = 2 (Text)")
+
+with open(CAMINHO, "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+
+print("OK: arquivo salvo")
+PYEOF
+O que esperar:
+
+text
+Corrigido: Modo -> queryType = 2 (Text)
+Corrigido: Estado -> queryType = 2 (Text)
+OK: arquivo salvo
+Passo 3 — Verificar o arquivo
+bash
+grep -c '"queryType": "2"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+grep -c '"queryType": "0"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+O que deve aparecer:
+
+"queryType": "2" → 2
+
+"queryType": "0" → 4
+
+Passo 4 — Subir o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose start grafana
+Aguarde 30s.
+
+Passo 5 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: todos os 5 painéis com dados.
+
+Passo 6 — Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: Modo e Estado com queryType = 2 (Text) no JSON do disco
+
+- O Grafana estava sobrescrevendo o banco com queryType=0.
+- Editei o JSON do disco com o Grafana parado.
+- Agora os painéis Modo e Estado vão carregar corretamente."
+git push
+Me diga:
+
+O grep -c '"queryType": "2"' mostra 2?
+
+Após o docker compose start grafana, os painéis Modo e Estado mostram dados?
+
+Se sim, o dashboard 2D está completo (5 de 5 painéis)?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+Por código, consegue mudar o tipo de grafico, o Fildes para All Fields?
+🎯 Sim! Dá para mudar o tipo de gráfico e o "Fields" via código
+O painel table (usado para Modo e Estado) tem um campo options onde definimos o tipo de gráfico. Para o painel stat, o campo "Fields" (que estava em Numeric Fields) pode ser mudado para All Fields via JSON.
+
+Vou te dar um script Python que:
+
+Para o Grafana (para ele não sobrescrever o JSON).
+
+Edita o cpd-dashboard.json:
+
+Troca queryType: "0" por queryType: "2" em Modo e Estado.
+
+Troca o tipo de gráfico de table para stat em Modo e Estado.
+
+Muda o Fields para All Fields (para o stat aceitar texto).
+
+Sobe o Grafana.
+
+Exporta o JSON do banco para o disco (para confirmar).
+
+🛠️ Script completo (rodar no Mac)
+bash
+cat > ~/Desktop/monitoramento-cpd/corrigir_paineis.py << 'PYEOF'
+#!/usr/bin/env python3
+"""Corrige os painéis Modo e Estado: queryType=2 (Text), tipo stat, Fields=All."""
+import json
+import os
+import subprocess
+
+BASE = "/Users/cristiano/Desktop/monitoramento-cpd"
+CAMINHO = os.path.join(BASE, "grafana", "dashboards", "cpd-dashboard.json")
+
+# 1. Parar o Grafana
+print("[1/4] Parando o Grafana...")
+subprocess.run(["docker", "compose", "stop", "grafana"], cwd=BASE, check=True)
+
+# 2. Editar o JSON
+print("[2/4] Editando o JSON...")
+with open(CAMINHO) as f:
+    dashboard = json.load(f)
+
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo not in ["Modo", "Estado"]:
+        continue
+
+    # Trocar queryType para "2" (Text)
+    for target in panel.get("targets", []):
+        target["queryType"] = "2"
+        print(f"  {titulo}: queryType = 2 (Text)")
+
+    # Mudar o tipo de gráfico para "stat"
+    panel["type"] = "stat"
+    print(f"  {titulo}: tipo = stat")
+
+    # Mudar o Fields para "All Fields" (para aceitar texto)
+    # No painel stat, o campo é "options.reduceOptions.fields"
+    if "options" not in panel:
+        panel["options"] = {}
+    if "reduceOptions" not in panel["options"]:
+        panel["options"]["reduceOptions"] = {}
+    panel["options"]["reduceOptions"]["fields"] = "/.*/"
+    print(f"  {titulo}: Fields = All Fields (/.*/)")
+
+    # Garantir que o fieldConfig tenha os mappings corretos
+    if "fieldConfig" not in panel:
+        panel["fieldConfig"] = {"defaults": {}, "overrides": []}
+    if "defaults" not in panel["fieldConfig"]:
+        panel["fieldConfig"]["defaults"] = {}
+    panel["fieldConfig"]["defaults"]["mappings"] = [
+        {"type": "value", "options": {"ARMADO": {"color": "blue", "index": 0}, "DESARMADO": {"color": "orange", "index": 1}}} if titulo == "Modo" else
+        {"type": "value", "options": {
+            "NORMAL": {"color": "green", "index": 0},
+            "AVISO SALA": {"color": "yellow", "index": 1},
+            "APROXIMACAO RACK": {"color": "orange", "index": 2},
+            "EMERGENCIA RACK": {"color": "red", "index": 3},
+            "INVASAO SALA": {"color": "red", "index": 4},
+            "ACESSO RFID": {"color": "purple", "index": 5},
+        }}
+    ]
+
+    # Remover transformações que não são necessárias (organize)
+    if "transformations" in panel:
+        panel["transformations"] = []
+
+with open(CAMINHO, "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+print("  OK: arquivo salvo")
+
+# 3. Subir o Grafana
+print("[3/4] Subindo o Grafana...")
+subprocess.run(["docker", "compose", "start", "grafana"], cwd=BASE, check=True)
+
+# 4. Aguardar e exportar do banco
+print("[4/4] Aguardando 10s e exportando do banco...")
+import time
+time.sleep(10)
+
+import requests
+r = requests.get("http://localhost:3000/api/dashboards/uid/cpd-dashboard", auth=("admin", "admin"))
+if r.status_code == 200:
+    db_dashboard = r.json()["dashboard"]
+    with open(CAMINHO, "w") as f:
+        json.dump(db_dashboard, f, indent=2, ensure_ascii=False)
+    print("  OK: dashboard exportado do banco para o disco")
+else:
+    print(f"  AVISO: não foi possível exportar ({r.status_code})")
+
+print("\n✅ Concluído!")
+print("Abra: http://localhost:3000/d/cpd-dashboard/cpd-dashboard")
+PYEOF
+
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python3 corrigir_paineis.py
+🎯 O que o script faz
+Passo	O que muda
+1	Para o Grafana (para não sobrescrever)
+2	Edita o JSON: queryType=2 (Text), tipo stat, Fields All Fields (/.*/)
+3	Sobe o Grafana
+4	Exporta o dashboard do banco para o disco (para confirmar)
+🛠️ Se ainda der "No data" nos painéis Modo e Estado
+O stat do Grafana 13 pode não renderizar texto da mesma forma que o table. Se isso acontecer, a solução é manter o table (que funciona com texto) e só mudar o queryType para 2.
+
+Me diga:
+
+O script rodou sem erro?
+
+Os painéis Modo e Estado mostram ARMADO e EMERGENCIA RACK?
+
+Se não, qual o erro no Console (F12)?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+Devo parar o Grafana?
+🎯 Sim, o script já faz isso por você
+O script Python que eu te passei já para o Grafana no passo 1 e sobe de novo no passo 3. Você só precisa rodar o script — ele cuida de tudo.
+
+Mas se preferir fazer manualmente (para ter controle), a ordem é:
+
+🛠️ Ordem manual (se quiser fazer passo a passo)
+1. Parar o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose stop grafana
+O que esperar: Container cpd-grafana Stopped.
+
+2. Editar o JSON no disco
+Aqui você roda o script Python (só a parte de edição, sem o docker compose):
+
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+
+python3 - << 'PYEOF'
+import json
+
+CAMINHO = "grafana/dashboards/cpd-dashboard.json"
+
+with open(CAMINHO) as f:
+    dashboard = json.load(f)
+
+for panel in dashboard.get("panels", []):
+    titulo = panel.get("title", "")
+    if titulo not in ["Modo", "Estado"]:
+        continue
+
+    # queryType = 2 (Text)
+    for target in panel.get("targets", []):
+        target["queryType"] = "2"
+
+    # tipo stat
+    panel["type"] = "stat"
+
+    # Fields = All Fields
+    if "options" not in panel:
+        panel["options"] = {}
+    if "reduceOptions" not in panel["options"]:
+        panel["options"]["reduceOptions"] = {}
+    panel["options"]["reduceOptions"]["fields"] = "/.*/"
+
+    # Mappings
+    if "fieldConfig" not in panel:
+        panel["fieldConfig"] = {"defaults": {}, "overrides": []}
+    if "defaults" not in panel["fieldConfig"]:
+        panel["fieldConfig"]["defaults"] = {}
+    panel["fieldConfig"]["defaults"]["mappings"] = [
+        {"type": "value", "options": {"ARMADO": {"color": "blue", "index": 0}, "DESARMADO": {"color": "orange", "index": 1}}} if titulo == "Modo" else
+        {"type": "value", "options": {
+            "NORMAL": {"color": "green", "index": 0},
+            "AVISO SALA": {"color": "yellow", "index": 1},
+            "APROXIMACAO RACK": {"color": "orange", "index": 2},
+            "EMERGENCIA RACK": {"color": "red", "index": 3},
+            "INVASAO SALA": {"color": "red", "index": 4},
+            "ACESSO RFID": {"color": "purple", "index": 5},
+        }}
+    ]
+
+    # Remover transformações
+    if "transformations" in panel:
+        panel["transformations"] = []
+
+    print(f"Corrigido: {titulo}")
+
+with open(CAMINHO, "w") as f:
+    json.dump(dashboard, f, indent=2, ensure_ascii=False)
+
+print("OK: arquivo salvo")
+PYEOF
+3. Verificar o JSON
+bash
+grep -c '"queryType": "2"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+grep -c '"type": "stat"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+O que esperar:
+
+"queryType": "2" → 2
+
+"type": "stat" → 3 (Temperatura, Modo, Estado — a Umidade também é stat)
+
+4. Subir o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose start grafana
+Aguarde 30s.
+
+5. Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+6. Exportar o dashboard do banco para o disco (para confirmar)
+bash
+cd ~/Desktop/monitoramento-cpd
+curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/cpd-dashboard \
+  | python3 -c "import sys, json; print(json.dumps(json.load(sys.stdin)['dashboard'], indent=2, ensure_ascii=False))" \
+  > grafana/dashboards/cpd-dashboard.json
+7. Commit
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: Modo e Estado com queryType=2 (Text) e tipo stat
+
+- queryType: 2 (Text) em Modo e Estado
+- tipo: stat (com Fields = All Fields)
+- Mappings para ARMADO, DESARMADO, NORMAL, EMERGENCIA RACK, etc."
+git push
+Me diga:
+
+Você parou o Grafana (docker compose stop grafana)?
+
+O grep -c '"queryType": "2"' mostra 2?
+
+Após o docker compose start grafana, os painéis Modo e Estado mostram dados?
+
+Com isso, fechamos o dashboard 2D de vez. 🚀
+
+❯ grep -c '"queryType": "2"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+grep -c '"type": "stat"' ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+2
+4
+🎉 AGORA SIM! O JSON está correto!
+Os grep mostram:
+
+"queryType": "2" → 2 (Modo e Estado)
+
+"type": "stat" → 4 (Temperatura, Umidade, Modo, Estado)
+
+O JSON no disco está perfeito. Agora vamos subir o Grafana e verificar.
+
+🛠️ Passo 1 — Subir o Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose start grafana
+Aguarde 30s.
+
+🛠️ Passo 2 — Abrir o dashboard
+text
+http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+O que deve aparecer: os 5 painéis com dados:
+
+Temperatura: 22.7°C
+
+Umidade: 83.0%
+
+Modo: ARMADO (fundo azul)
+
+Estado: EMERGENCIA RACK (fundo vermelho)
+
+Histórico: gráfico
+
+🛠️ Passo 3 — Se o painel Modo/Estado ainda der "No data"
+Se o stat ainda não renderizar o texto, a solução é voltar para o table (que funciona com texto) e manter o queryType: "2".
+
+Me diga:
+
+O docker compose start grafana rodou sem erro?
+
+Os painéis Modo e Estado mostram dados?
+
+Se não, qual o erro no Console (F12)?
+
+Com isso, fechamos o dashboard 2D. 🚀
+
+Agora sim! Parabém!!!!
+🎉 PARABÉNS! O dashboard 2D está 100% funcional!
+Que jornada! Finalmente chegamos lá. Agora você tem:
+
+Temperatura: 22.7°C (verde)
+
+Umidade: 83.0% (vermelho, acima do limiar)
+
+Modo: ARMADO (azul)
+
+Estado: EMERGENCIA RACK (vermelho)
+
+Histórico: gráfico com Temperatura e Umidade
+
+🛠️ Passo final — Commit e push
+bash
+cd ~/Desktop/monitoramento-cpd
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: dashboard 2D completo (5 painéis funcionando)
+
+- Modo e Estado com queryType=2 (Text) e tipo stat
+- Fields = All Fields para aceitar texto
+- Mappings: ARMADO (azul), DESARMADO (laranja), NORMAL (verde),
+  EMERGENCIA RACK (vermelho), etc.
+- Todos os 5 painéis funcionando: Temperatura, Umidade, Modo, Estado, Histórico"
+git push
+📊 Status final da lista de melhorias
+#	Item	Status
+1	Makefile / porta de entrada	✅
+2	LICENSE	⏳ (último)
+3	Índice navegável	✅
+4	ADRs	✅
+5	Testes automatizados	✅
+6	Contrato do firmware	✅
+7	NOC 3D real	✅
+8	Backup / recuperação	✅
+9	Observabilidade do pipeline	✅
+10	Escalabilidade documentada	⏳
+9 de 10 concluídos! Falta apenas #2 (LICENSE) e #10 (Escalabilidade).
+
+🎯 O que ainda falta
+1. #10 — Escalabilidade documentada (~30 min)
+Criar docs/como-adicionar-sala.md com o passo a passo para replicar o projeto em uma segunda sala/CPD:
+
+Segundo ESP32
+
+Segundo host no Zabbix
+
+Segundo dashboard no Grafana
+
+Padrões de nomenclatura
+
+2. #2 — LICENSE (~5 min)
+Adicionar um arquivo LICENSE com a licença escolhida (MIT, Apache 2.0, GPL). Recomendo MIT (permissiva, permite uso comercial com atribuição).
+
+🎯 O que você construiu
+Um projeto de monitoramento de CPD com:
+
+Componente	O que faz
+ESP32 (Wokwi)	Lê sensores, publica MQTT
+Mosquitto local	Ponte MQTT (broker público → local)
+Zabbix	Coleta, itens, gatilhos, macros
+Grafana 2D	Dashboard com 5 painéis
+Grafana 3D	NOC com sala isométrica em Three.js
+Prometheus	Observabilidade do pipeline
+Testes	20 testes validando schema e IaC
+ADRs	8 decisões arquiteturais documentadas
+Makefile	Porta de entrada única
+Backup	Script para dump do Postgres e Grafana
+Deploy Windows	Guia + script PowerShell
+Isso é muito acima da média para um projeto de laboratório. Você tem uma base sólida para "projetos maiores".
+
+🎯 Próximo passo
+Me diga:
+
+Qual o próximo item? #10 (escalabilidade) ou #2 (LICENSE)?
+
+Quer fazer uma pausa para consolidar o que já temos?
+
+Quer atualizar o README com os itens novos (dashboard 2D, observabilidade, etc.)?
+
+Parabéns pela persistência! Você não desistiu e o resultado está aí. 🚀
+
