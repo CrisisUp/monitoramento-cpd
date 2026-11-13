@@ -113,6 +113,8 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - ./grafana/config/grafana.ini:/etc/grafana/grafana.ini:ro
       - ./grafana/noc:/usr/share/grafana/public/grafana-custom/noc:ro
+      - ./firmware:/usr/share/grafana/public/grafana-custom/firmware:ro
+      
     networks:
       - cpd-net
 

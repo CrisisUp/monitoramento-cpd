@@ -14,11 +14,12 @@
             border: 1px solid #2c3038;
             pointer-events: none;
         }
+        .mock-badge.erro { color: #f2495c; border-color: #f2495c; }
     </style>
 </head>
 <body>
     <div id="three-container"></div>
-    <div class="mock-badge" id="badge">Modo: mock | 24.5°C | porta fechada</div>
+    <div class="mock-badge" id="badge">Conectando ao Zabbix...</div>
 
     <script type="module">
         import { criarCena } from './cena3d.js';
@@ -27,27 +28,169 @@
         const badge = document.getElementById('badge');
         const cena = criarCena(container);
 
-        const dadosMock = {
-            ambiente: { online: true, energia: 1, agua: 0, porta: 0, temperatura: 24.5, umidade: 45 },
-            servidores: [{ id: 'srv1', nome: 'SRV-01', estado: 'ok', cpu: 30 }]
-        };
+        // ============================================================
+        // CONFIGURAÇÃO
+        // ============================================================
+        // Usa o proxy do datasource do Grafana (sem CORS).
+        const ZABBIX_API = '/api/datasources/proxy/uid/zabbix/api_jsonrpc.php';
+        const ZABBIX_USER = 'Admin';
+        const ZABBIX_PASSWORD = 'zabbix';
+        const HOST_NAME = 'esp32-cpd';
 
-        function atualizar(dados) {
-            cena.atualizar(dados);
-            const porta = dados.ambiente.porta === 1 ? 'porta aberta' : 'porta fechada';
-            const temp = dados.ambiente.temperatura != null ? `${dados.ambiente.temperatura}°C` : '--';
-            badge.textContent = `Modo: mock | ${temp} | ${porta}`;
+        // Schema (carregado uma vez)
+        let schemaStatus = null;
+
+        let authToken = null;
+        let hostId = null;
+
+        // ============================================================
+        // API DO ZABBIX (via proxy do Grafana)
+        // ============================================================
+        async function zabbixCall(method, params) {
+            const body = {
+                jsonrpc: '2.0',
+                method,
+                params,
+                id: 1,
+            };
+            if (authToken) body.auth = authToken;
+
+            const r = await fetch(ZABBIX_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+            });
+            if (!r.ok) {
+                throw new Error(`HTTP ${r.status} em ${method}`);
+            }
+            const data = await r.json();
+            if (data.error) throw new Error(`${method}: ${data.error.message}`);
+            return data.result;
         }
 
-        atualizar(dadosMock);
-        console.log('[NOC 3D] Cena iniciada.');
+        async function login() {
+            authToken = await zabbixCall('user.login', {
+                username: ZABBIX_USER,
+                password: ZABBIX_PASSWORD,
+            });
+        }
 
-        setTimeout(() => { dadosMock.ambiente.porta = 1; atualizar(dadosMock); }, 4000);
-        setTimeout(() => { dadosMock.ambiente.porta = 0; dadosMock.ambiente.temperatura = 33; atualizar(dadosMock); }, 8000);
-        setTimeout(() => { dadosMock.ambiente.agua = 1; atualizar(dadosMock); }, 14000);
-        setTimeout(() => { dadosMock.ambiente.agua = 0; dadosMock.ambiente.temperatura = 24.5; atualizar(dadosMock); }, 20000);
-        setTimeout(() => { dadosMock.ambiente.energia = 0; atualizar(dadosMock); }, 24000);
-        setTimeout(() => { dadosMock.ambiente.energia = 1; atualizar(dadosMock); }, 30000);
+        async function getHost() {
+            const hosts = await zabbixCall('host.get', {
+                filter: { host: [HOST_NAME] },
+            });
+            if (!hosts.length) throw new Error(`Host '${HOST_NAME}' não encontrado`);
+            hostId = hosts[0].hostid;
+        }
+
+        async function getItems() {
+            const keys = [
+                'esp32.temp', 'esp32.umid', 'esp32.porta', 'esp32.modo',
+                'esp32.estado', 'esp32.distancia', 'esp32.invasoes',
+                'esp32.ambiente', 'esp32.luz', 'esp32.agua', 'esp32.energia'
+            ];
+            return await zabbixCall('item.get', {
+                hostids: hostId,
+                output: ['key_', 'lastvalue'],
+                filter: { key_: keys },
+            });
+        }
+
+        // ============================================================
+        // VALIDAÇÃO CONTRA O SCHEMA
+        // ============================================================
+        async function carregarSchema() {
+            try {
+                const r = await fetch('/public/grafana-custom/firmware/status-schema.json');
+                if (r.ok) {
+                    schemaStatus = await r.json();
+                    console.log('[NOC 3D] Schema carregado.');
+                } else {
+                    console.warn('[NOC 3D] Schema não disponível, validação desabilitada.');
+                }
+            } catch (e) {
+                console.warn('[NOC 3D] Erro ao carregar schema:', e.message);
+            }
+        }
+
+        // Validação manual (sem ajv, para não adicionar dependência)
+        function validarStatus(dados) {
+            if (!schemaStatus) return true;
+            const required = schemaStatus.required || [];
+            for (const campo of required) {
+                if (!(campo in dados)) {
+                    console.warn(`[NOC 3D] Campo faltando: ${campo}`);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // ============================================================
+        // MONTAR DADOS
+        // ============================================================
+        function montarDados(items) {
+            const map = {};
+            for (const it of items) map[it.key_] = it.lastvalue;
+
+            const temp = parseFloat(map['esp32.temp']);
+            const umid = parseFloat(map['esp32.umid']);
+            const porta = map['esp32.porta'] === 'true' || map['esp32.porta'] === '1' ? 1 : 0;
+            const agua = map['esp32.agua'] === 'true' || map['esp32.agua'] === '1' ? 1 : 0;
+            const energia = map['esp32.energia'] === 'true' || map['esp32.energia'] === '1' ? 1 : 0;
+
+            return {
+                ambiente: {
+                    online: true,
+                    energia: isNaN(energia) ? 1 : energia,
+                    agua: isNaN(agua) ? 0 : agua,
+                    porta: porta,
+                    temperatura: isNaN(temp) ? null : temp,
+                    umidade: isNaN(umid) ? null : umid,
+                },
+                servidores: [
+                    { id: 'srv1', nome: 'SRV-01', estado: 'ok', cpu: 30 }
+                ],
+            };
+        }
+
+        // ============================================================
+        // LOOP
+        // ============================================================
+        async function loop() {
+            try {
+                if (!authToken) {
+                    await login();
+                    await getHost();
+                }
+                const items = await getItems();
+                const dados = montarDados(items);
+
+                // Validação manual (só loga, não bloqueia)
+                validarStatus(dados.ambiente);
+
+                cena.atualizar(dados);
+                const porta = dados.ambiente.porta === 1 ? 'porta aberta' : 'porta fechada';
+                const temp = dados.ambiente.temperatura != null ? `${dados.ambiente.temperatura}°C` : '--';
+                badge.textContent = `Zabbix | ${temp} | ${porta}`;
+                badge.classList.remove('erro');
+            } catch (e) {
+                console.error('[NOC 3D] Erro:', e.message);
+                badge.textContent = `Erro: ${e.message}`;
+                badge.classList.add('erro');
+                authToken = null;
+            }
+            setTimeout(loop, 5000);
+        }
+
+        // ============================================================
+        // INICIAR
+        // ============================================================
+        (async () => {
+            await carregarSchema();
+            loop();
+        })();
     </script>
 </body>
 </html>
