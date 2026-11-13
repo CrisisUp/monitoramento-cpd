@@ -1,0 +1,669 @@
+Bom, estou achando melhor subir para o github, já que as coisas podem complicar por aqui.
+Essa é a melhor decisão que você poderia tomar agora. Salvar o estado atual no GitHub é a atitude de um engenheiro de verdade: antes de qualquer mudança complexa, a gente congela o que funciona.
+
+Você tem um projeto incrível nas mãos:
+
+Pipeline de dados (Wokwi → Zabbix) funcionando.
+
+Dashboard 2D e 3D no Grafana.
+
+IaC do Zabbix (script idempotente).
+
+Toda a documentação em docs/.
+
+Vamos subir isso para o GitHub agora, de forma limpa e segura (sem senhas ou dados sensíveis).
+
+🛠️ Passo 1 — Preparar o .gitignore
+Antes de commitar, garanta que o .gitignore esteja correto para não subir:
+
+.env (senhas).
+
+Volumes do Docker.
+
+Arquivos temporários do macOS.
+
+__pycache__, .venv.
+
+Abra (ou crie) o .gitignore na raiz:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/.gitignore << 'EOF'
+# Segredos
+.env
+*.local
+
+# Dados dos containers
+data/
+logs/
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker
+*.log
+
+# Grafana (dados locais)
+grafana/grafana.db
+EOF
+🛠️ Passo 2 — Verificar se o .env não está no Git
+bash
+cd ~/Desktop/monitoramento-cpd
+git check-ignore .env
+O que deve aparecer: .env (significa que o Git está ignorando o arquivo).
+
+Se não aparecer, o .gitignore não está funcionando. Me avisa.
+
+🛠️ Passo 3 — Iniciar o Git (se ainda não iniciou)
+bash
+cd ~/Desktop/monitoramento-cpd
+git init
+🛠️ Passo 4 — Adicionar os arquivos e fazer o primeiro commit
+bash
+git add .
+git status
+O que verificar no git status:
+
+✅ .env não deve aparecer na lista.
+
+✅ grafana/noc/vendor/ e grafana/noc/vendor-classic/ devem aparecer (são código, não dados).
+
+✅ docs/ (com os 12 .txt) deve aparecer.
+
+✅ README.md, docker-compose.yml, configurar_zabbix.py, etc. devem aparecer.
+
+Se estiver OK:
+
+bash
+git commit -m "feat: pipeline completo de monitoramento CPD (Wokwi -> Zabbix -> Grafana 2D/3D)
+
+- Base Docker: Mosquitto, Zabbix, Grafana, Postgres
+- Ponte MQTT: Wokwi -> broker público -> Mosquitto local
+- Ingestão no Zabbix: 9 itens dependentes via JSONPath
+- IaC do Zabbix: script configurar_zabbix.py idempotente
+- Dashboard 2D: 5 painéis no Grafana (provisionado via JSON)
+- NOC 3D: sala 3D isométrica com Three.js (via iframe)
+- Documentação: 12 arquivos em docs/ com a jornada completa"
+🛠️ Passo 5 — Criar o repositório no GitHub
+Abra o GitHub no navegador: https://github.com/new
+
+Repository name: monitoramento-cpd
+
+Description: Monitoramento de sala de servidores com ESP32, Zabbix e Grafana (NOC 3D)
+
+Visibility: Public (ou Private, se preferir).
+
+NÃO marque "Add a README file", "Add .gitignore", "Choose a license" (já temos esses arquivos localmente).
+
+Clique em Create repository.
+
+O GitHub vai mostrar os comandos para conectar o repositório local ao remoto.
+
+🛠️ Passo 6 — Conectar e enviar
+No terminal, rode os comandos que o GitHub mostrou (algo como):
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git branch -M main
+git remote add origin https://github.com/SEU_USUARIO/monitoramento-cpd.git
+git push -u origin main
+Se o GitHub pedir autenticação:
+
+Use um Personal Access Token (não a senha da conta).
+
+Crie em: https://github.com/settings/tokens → Generate new token (classic) → escopo repo.
+
+🎯 O que você terá no GitHub
+Todo o código (Python, JS, CSS, HTML, YAML, JSON).
+
+O docker-compose.yml (para reproduzir a stack).
+
+A documentação (12 arquivos .txt + 00-plano.md).
+
+O README.md com a jornada.
+
+Nada de senhas (o .env fica de fora).
+
+Me diga:
+
+O .gitignore foi criado com as regras corretas?
+
+O git check-ignore .env confirmou que o .env está sendo ignorado?
+
+O git add . + git commit foi feito sem erro?
+
+O git push para o GitHub funcionou?
+
+Com o projeto no GitHub, você tem um "ponto de restauração". Se algo der errado daqui pra frente, é só voltar para esse commit. 🚀
+
+Como sei se já iniciei o git?
+Boa pergunta! Você verifica isso em 3 passos rápidos:
+
+1. Existe a pasta .git dentro do projeto?
+bash
+ls -la ~/Desktop/monitoramento-cpd/.git
+✅ Se aparecer a pasta .git (com arquivos como HEAD, config, objects, etc.) → o Git já foi iniciado.
+
+❌ Se aparecer "No such file or directory" → o Git não foi iniciado ainda.
+
+2. O Git reconhece a pasta como repositório?
+bash
+cd ~/Desktop/monitoramento-cpd
+git status
+✅ Se aparecer algo como:
+
+text
+On branch main
+No commits yet
+...
+→ o Git já foi iniciado (mas ainda não tem commit).
+
+Ou:
+
+text
+On branch main
+nothing to commit, working tree clean
+→ o Git já foi iniciado e tem commits.
+
+❌ Se aparecer:
+
+text
+fatal: not a git repository (or any of the parent directories): .git
+→ o Git não foi iniciado ainda.
+
+3. Existe algum commit feito?
+bash
+cd ~/Desktop/monitoramento-cpd
+git log --oneline
+✅ Se aparecer uma lista de commits (ex: abc1234 feat: pipeline completo...) → já tem commits.
+
+❌ Se aparecer fatal: your current branch 'main' does not have any commits yet → o Git está iniciado, mas sem commits.
+
+🎯 O que fazer com a resposta
+Situação	O que fazer
+Pasta .git não existe	git init + git add . + git commit -m "..."
+Pasta .git existe, git status mostra "No commits yet"	git add . + git commit -m "..."
+Pasta .git existe, git log mostra commits	Já tem histórico. Só falta configurar o remoto (git remote add origin ...) e o git push.
+Me diga:
+
+O ls -la .git mostra a pasta ou dá "No such file"?
+
+O git status mostra "On branch..." ou "fatal: not a git repository"?
+
+O git log --oneline mostra commits ou "does not have any commits yet"?
+
+Com essas 3 respostas, eu sei exatamente onde você está e o que fazer. 🚀
+
+❯ ls -la ~/Desktop/monitoramento-cpd/.git
+"/Users/cristiano/Desktop/monitoramento-cpd/.git": No such file or directory (os error 2)
+O Git não foi iniciado ainda. A pasta .git não existe. Vamos iniciar e fazer o primeiro commit agora.
+
+🛠️ Passo 1 — Verificar o .gitignore
+Antes de tudo, garanta que o .gitignore está correto:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+cat .gitignore
+Se aparecer as regras (.env, .venv, __pycache__, etc.), ótimo. Se não aparecer ou estiver vazio, crie:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/.gitignore << 'EOF'
+# Segredos
+.env
+*.local
+
+# Dados dos containers
+data/
+logs/
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker
+*.log
+
+# Grafana (dados locais)
+grafana/grafana.db
+EOF
+🛠️ Passo 2 — Iniciar o Git
+bash
+cd ~/Desktop/monitoramento-cpd
+git init
+O que esperar: Initialized empty Git repository in /Users/cristiano/Desktop/monitoramento-cpd/.git/
+
+🛠️ Passo 3 — Configurar seu nome e e-mail (só na primeira vez)
+bash
+git config user.name "Cristiano"
+git config user.email "seu-email@exemplo.com"
+(Use o e-mail que você usa no GitHub.)
+
+🛠️ Passo 4 — Adicionar os arquivos e verificar o que será commitado
+bash
+git add .
+git status
+O que verificar no git status:
+
+✅ .env NÃO deve aparecer na lista (está no .gitignore).
+
+✅ .venv/ NÃO deve aparecer.
+
+✅ __pycache__/ NÃO deve aparecer.
+
+✅ Todo o resto (.py, .js, .css, .html, .yml, .json, docs/, README.md) deve aparecer.
+
+Se o .env aparecer na lista, o .gitignore não está funcionando. Me avisa.
+
+🛠️ Passo 5 — Fazer o primeiro commit
+bash
+git commit -m "feat: pipeline completo de monitoramento CPD (Wokwi -> Zabbix -> Grafana 2D/3D)
+
+- Base Docker: Mosquitto, Zabbix, Grafana, Postgres
+- Ponte MQTT: Wokwi -> broker público -> Mosquitto local
+- Ingestão no Zabbix: 9 itens dependentes via JSONPath
+- IaC do Zabbix: script configurar_zabbix.py idempotente
+- Dashboard 2D: 5 painéis no Grafana (provisionado via JSON)
+- NOC 3D: sala 3D isométrica com Three.js (via iframe)
+- Documentação: 12 arquivos em docs/ com a jornada completa"
+O que esperar: uma mensagem como [main (root-commit) abc1234] feat: pipeline completo... seguida da lista de arquivos commitados.
+
+🛠️ Passo 6 — Confirmar que o commit foi feito
+bash
+git log --oneline
+O que deve aparecer: abc1234 feat: pipeline completo de monitoramento CPD...
+
+Me diga:
+
+O git init rodou sem erro?
+
+O git status mostrou o .env na lista? (se sim, o .gitignore não está funcionando)
+
+O git commit foi feito com sucesso?
+
+O git log --oneline mostra o commit?
+
+Com o commit feito, o próximo passo é criar o repositório no GitHub e fazer o push. 🚀
+
+❯ git branch -M main
+git remote add origin https://github.com/CrisisUp/monitoramento-cpd.git
+git push -u origin main
+Enumerando objetos: 997, concluído.
+Contando objetos: 100% (997/997), concluído.
+Compressão delta usando até 10 threads
+Comprimindo objetos: 100% (955/955), concluído.
+Escrevendo objetos: 100% (997/997), 3.54 MiB | 5.71 MiB/s, concluído.
+Total 997 (delta 109), reutilizados 0 (delta 0), pack reutilizados 0 (de 0)
+remote: Resolving deltas: 100% (109/109), done.
+To https://github.com/CrisisUp/monitoramento-cpd.git
+ * [new branch]      main -> main
+branch 'main' configurado para rastrear 'origin/main'.
+🎉 PERFEITO! O projeto está no GitHub!
+
+O git push funcionou. O repositório está em:
+
+https://github.com/CrisisUp/monitoramento-cpd
+
+A partir de agora, você tem um ponto de restauração seguro. Se algo der errado nas próximas etapas, é só voltar para esse commit.
+
+🎯 O que está no GitHub agora
+✅ Todo o código (Python, JS, CSS, HTML, YAML, JSON).
+
+✅ O docker-compose.yml.
+
+✅ A documentação (12 arquivos .txt + 00-plano.md).
+
+✅ O README.md.
+
+✅ O NOC 3D (grafana/noc/).
+
+❌ Nada de senhas (o .env ficou de fora).
+
+🛠️ Hábitos a partir de agora
+1. Sempre que mudar algo, commite
+bash
+cd ~/Desktop/monitoramento-cpd
+git add .
+git commit -m "descrição do que mudou"
+git push
+2. Antes de grandes mudanças, crie um branch
+Se for testar algo arriscado (ex: conectar o 3D aos dados reais do Zabbix), crie um branch separado:
+
+bash
+git checkout -b feature/dados-reais-3d
+Se der errado, é só voltar para o main:
+
+bash
+git checkout main
+3. Se quebrar tudo, recupere o último commit
+bash
+git checkout -- .
+🎯 Próximo passo — Conectar o 3D aos dados reais
+Agora que temos um "ponto seguro", podemos avançar com segurança. O próximo passo é substituir os dados mockados do noc3d.html pelos dados reais do Zabbix.
+
+O problema: o iframe é servido pelo Grafana (localhost:3000), mas a API do Zabbix está em localhost:8080. Isso é origem cruzada (CORS), e o navegador pode bloquear o fetch().
+
+A solução: usar o proxy reverso do Grafana para acessar a API do Zabbix. Ou usar mode: 'no-cors' no fetch (mas isso limita a leitura da resposta).
+
+Vou te dar 3 opções:
+
+Opção	Como funciona	Prós	Contras
+A — Proxy reverso do Grafana	Adicionar um proxy no grafana.ini que redireciona /api/zabbix para http://zabbix-web:8080	CORS resolvido, sem mudar o Zabbix	Configuração extra no Grafana
+B — CORS no Zabbix	Adicionar Access-Control-Allow-Origin: * no nginx do Zabbix	Simples, sem mudar o Grafana	Precisa editar o nginx do container
+C — Mock + variáveis	Manter o mock, mas permitir testar com dados reais via parâmetros na URL	Simples, sem CORS	Não é tempo real
+Minha recomendação: Opção A (proxy reverso do Grafana). É a mais limpa e não mexe no Zabbix.
+
+Me diga:
+
+Você quer conectar o 3D aos dados reais agora (Opção A)?
+
+Ou prefere fazer uma pausa, revisar o que já temos, e depois voltar?
+
+Ou prefere voltar para o Telegram (Fatia 3) e fechar o ciclo de monitoramento?
+
+Com o projeto no GitHub, você está no controle. 🚀
+
+Bom, antes de fazer isso, quero que você avalie o projeto como um todo!
+Diga os pontos forte e os campos que podemos melhorar!
+O meu objetivo é que este projeto ale'm de ser funcional, também seja uma fonte de pesquisa para projetos maiores.
+Então tudo tem de ter um motivo de existir nele!
+📊 Avaliação Completa do Projeto monitoramento-cpd
+Antes de qualquer código novo, uma auditoria honesta. Vou dividir em pontos fortes (o que faz o projeto valer a pena como referência) e campos de melhoria (o que precisa amadurecer para virar fonte de pesquisa para projetos maiores).
+
+✅ Pontos Fortes
+1. Arquitetura em camadas bem separada
+O projeto tem 5 camadas claras com fronteiras definidas:
+
+text
+[ ESP32/Wokwi ] → [ MQTT ] → [ Mosquitto (bridge) ] → [ Zabbix ] → [ Grafana (2D + 3D) ]
+Cada camada pode ser substituída sem quebrar as outras:
+
+Trocar o Wokwi por hardware real → só muda o broker no firmware.
+
+Trocar o Mosquitto por outro broker → só muda a config da bridge.
+
+Trocar o Grafana por outro visualizador → a API do Zabbix continua lá.
+
+Por que isso importa: é exatamente o que se espera de um projeto "fonte de pesquisa para projetos maiores". A arquitetura é o esqueleto reutilizável.
+
+2. Filosofia IaC levada a sério
+Você tem três níveis de IaC:
+
+Nível	Arquivo	O que faz
+Infra	docker-compose.yml	Sobe a stack inteira
+Zabbix	configurar_zabbix.py	Cria host, itens, macros, template
+Grafana	cpd-dashboard.json + cpd-3d.json + provisioning/*.yaml	Provisiona datasource e dashboards
+Isso é raro em projetos de laboratório. A maioria configura tudo na interface e depois não consegue reproduzir. O seu é reproduzível por código.
+
+Lição documentada: o script do Zabbix é idempotente (roda N vezes sem duplicar). Isso é o padrão profissional.
+
+3. Documentação da jornada real (não da versão idealizada)
+Os 12 arquivos em docs/ capturam:
+
+Os erros reais (zsh, CORS, CSP, trends, hostid).
+
+As decisões e por que foram tomadas.
+
+As alternativas descartadas.
+
+Isso é o que diferencia um tutorial de sucesso de um registro de engenharia. Quem ler o docs/ vai aprender o porquê, não só o como.
+
+Sugestão de leitura para o README: o README deve apontar para docs/ como "bastidores da jornada". A documentação não é o README; é a história por trás dele.
+
+4. NOC 3D com visual de operação (não de videogame)
+O cena3d.js (original) tem decisões de UX muito boas:
+
+Câmera ortográfica isométrica (estilo planta técnica, não FPS).
+
+Cores de estado só quando significam algo.
+
+Alarmes visuais (giroflex, calor, água, energia).
+
+Cada problema reage diferente (tag efeito).
+
+Isso mostra maturidade visual. Não é "3D por ser bonito". É 3D porque comunica estado operacional.
+
+5. Tratamento de falhas no firmware (v8.3)
+O firmware do ESP32 tem:
+
+HMAC + nonce (anti-replay).
+
+Watchdog.
+
+Fila store-and-forward (MQTT offline).
+
+Warm-up global.
+
+Respostas de comando autenticadas.
+
+Isso é segurança e confiabilidade acima da média para um projeto de laboratório. É um bom ponto de partida para estudar IoT seguro.
+
+🔧 Campos de Melhoria
+1. ⚠️ Falta de "casca" de projeto reutilizável
+Hoje, se alguém quiser reproduzir o projeto, precisa:
+
+Entender o docker-compose.yml inteiro.
+
+Ler 12 arquivos de documentação.
+
+Copiar e colar comandos soltos.
+
+Falta um Makefile ou install.sh que faça o setup em uma linha:
+
+bash
+make setup    # cria .env, sobe stack, roda configurar_zabbix.py
+make up       # sobe tudo
+make down     # para tudo
+make reset    # apaga volumes e recomeça
+Por que importa: para virar "fonte de pesquisa", o projeto precisa ter uma porta de entrada óbvia. Hoje, a porta é "leia o README e reze".
+
+2. ⚠️ Falta de testes automatizados
+O configurar_zabbix.py é idempotente, mas não tem teste unitário. Se alguém quebrar a lógica de upsert, só descobre quando roda e vê [!].
+
+Sugestão mínima:
+
+tests/test_configurar_zabbix.py com pytest e mocks da API do Zabbix.
+
+Verifica que rodar 2x não duplica.
+
+Verifica que cada tipo de item (float, text, unsigned) usa trends correto.
+
+Por que importa: sem teste, o código não é confiável para "projetos maiores". É só "funciona na minha máquina".
+
+3. ⚠️ Documentação espalhada, sem índice navegável
+Os 12 arquivos .txt em docs/ são um tesouro, mas estão soltos. O leitor precisa abrir um por um para entender a jornada.
+
+Sugestão:
+
+Renomear para docs/01-arquitetura.md, docs/02-passos-0.md, etc.
+
+Adicionar um docs/00-indice.md com links e resumos.
+
+O README.md aponta para o índice.
+
+Por que importa: para virar referência de pesquisa, a documentação precisa ser navegável, não só completa.
+
+4. ⚠️ Falta de "contrato" do firmware
+O firmware v8.3 tem MUITA funcionalidade (HMAC, OTA, RFID, watchdog, sensores). Mas não há um contrato explícito entre ele e o Zabbix:
+
+Quais campos ele publica no MQTT?
+
+Quais comandos ele aceita?
+
+Quais garantias ele oferece (latência, formato, autenticação)?
+
+Sugestão:
+
+Criar docs/protocolo-mqtt.md documentando todos os tópicos e payloads.
+
+Criar um JSON Schema (firmware/status-schema.json) que valide o JSON de status.
+
+O configurar_zabbix.py lê esse schema para criar os itens dependentes automaticamente.
+
+Por que importa: para virar referência, o protocolo precisa ser explícito e versionado. Se o firmware mudar, o contrato muda junto.
+
+5. ⚠️ NOC 3D não conecta aos dados reais (ainda)
+Hoje, o noc3d.html usa dados mockados. Isso é bom para desenvolvimento, mas o NOC 3D não é "de verdade" até buscar do Zabbix.
+
+Sugestão:
+
+Implementar a Opção A (proxy reverso do Grafana) para evitar CORS.
+
+Ou usar Server-Sent Events (SSE) no Grafana (que já tem suporte a Live) e expor os dados do Zabbix em tempo real.
+
+Documentar a decisão no docs/.
+
+Por que importa: o NOC 3D precisa reagir de verdade para valer a pena. Mock é para desenvolvimento; real é para operação.
+
+6. ⚠️ Falta de observabilidade do próprio pipeline
+O pipeline inteiro (Wokwi → Mosquitto → Zabbix → Grafana) não tem métricas de si mesmo:
+
+Quantas mensagens MQTT chegam por segundo?
+
+Qual é a latência entre o publish e o latest data?
+
+Quantas vezes o Zabbix falhou em ler o Mosquitto?
+
+Sugestão:
+
+Adicionar Prometheus + Grafana para monitorar o próprio pipeline.
+
+Ou usar healthchecks no docker-compose.yml que expõem /metrics para cada serviço.
+
+Por que importa: para virar referência, o projeto precisa mostrar como observar o observador. É o próximo nível.
+
+7. ⚠️ Falta de "estratégia de backup e recuperação"
+O projeto tem volumes do Docker (Postgres, Grafana, Mosquitto), mas não tem:
+
+Script de backup (backup.sh).
+
+Script de restauração (restore.sh).
+
+Documentação de "o que fazer se o Postgres quebrar".
+
+Sugestão:
+
+scripts/backup.sh que faz pg_dump e salva em backups/.
+
+scripts/restore.sh que restaura de um .sql.
+
+docs/backup.md explicando a estratégia.
+
+Por que importa: para projetos maiores, backup e recuperação são não-negociáveis. Um laboratório sem backup é um laboratório que ensina errado.
+
+8. ⚠️ Falta de "documentação de decisões arquiteturais" (ADRs)
+Você tem decisões importantes (broker local vs. público, bridge vs. HTTP, 3D vs. 2D) espalhadas nos .txt. Mas não há um ADR (Architecture Decision Record) formal.
+
+Sugestão:
+
+docs/adr/001-broker-local.md
+
+docs/adr/002-bridge-mqtt.md
+
+docs/adr/003-3d-via-iframe.md
+
+etc.
+
+Cada ADR tem: Contexto, Decisão, Consequências, Alternativas descartadas.
+
+Por que importa: para projetos maiores, a história das decisões é mais importante que o código. Um ADR explica por que o código é assim.
+
+9. ⚠️ Falta de "roadmap explícito" pós-fase-6
+Você tem as fatias 0–6 e a 7 (Ações HMAC), mas não há:
+
+Backlog do que vem depois (ex: multi-rack, multi-CPD).
+
+Diagrama de evolução (o que vira o quê quando o projeto crescer).
+
+Como adicionar um segundo ESP32 ou um segundo Zabbix.
+
+Sugestão:
+
+docs/roadmap.md com as próximas fases (curto, médio, longo prazo).
+
+docs/como-adicionar-sala.md (passo a passo para replicar o projeto em outro CPD).
+
+Por que importa: para virar fonte de pesquisa, o projeto precisa mostrar como escalar sem reescrever tudo.
+
+10. ⚠️ Falta de licença explícita
+O LICENSE-three.txt está lá (para o Three.js), mas o projeto em si não tem licença.
+
+Sugestão:
+
+Adicionar LICENSE (MIT, Apache 2.0, GPL — depende do objetivo).
+
+Adicionar um CONTRIBUTING.md com regras para contribuições.
+
+Adicionar um CODE_OF_CONDUCT.md (opcional, mas recomendado).
+
+Por que importa: sem licença, o projeto não pode ser usado como base para projetos maiores (juridicamente).
+
+🎯 Resumo Executivo
+Dimensão	Nota	Comentário
+Arquitetura	9/10	Camadas bem separadas, reutilizável
+IaC	8/10	Scripts idempotentes, mas sem testes
+Documentação	7/10	Completa, mas não navegável
+Firmware	8/10	Seguro e robusto, mas sem contrato explícito
+Visualização	9/10	NOC 3D maduro, mas com mock
+Reprodutibilidade	5/10	Falta make setup e testes
+Observabilidade	3/10	Pipeline não monitora a si mesmo
+Backup/Recuperação	2/10	Não existe
+Governança	3/10	Falta licença, ADRs, contribuição
+Escalabilidade	4/10	Falta documentar como replicar
+Nota geral: 7/10.
+
+O projeto é funcional, bem-arquitetado e bem-documentado, mas ainda é um laboratório, não uma referência de engenharia. Para virar fonte de pesquisa, precisa de testes, ADRs, licença, backup, Makefile e observabilidade.
+
+🚀 Próximos passos sugeridos (ordem de impacto)
+Se você quer transformar esse projeto em referência, a ordem de maior impacto para menor é:
+
+make setup / make up / make down — porta de entrada óbvia.
+
+LICENSE — permite uso legal.
+
+docs/00-indice.md — navegabilidade da jornada.
+
+docs/adr/ — registro das decisões.
+
+tests/test_configurar_zabbix.py — confiança no código.
+
+docs/protocolo-mqtt.md — contrato explícito do firmware.
+
+Conectar o NOC 3D aos dados reais — o 3D deixar de ser mock.
+
+scripts/backup.sh — estratégia de recuperação.
+
+Observabilidade do pipeline — Prometheus + Grafana.
+
+docs/como-adicionar-sala.md — escalabilidade.
+
+Me diga:
+
+Concorda com a avaliação? Algum ponto que eu deixei passar?
+
+Qual desses 10 itens você quer atacar primeiro?
+
+Você quer que eu te ajude a implementar um desses itens agora, ou prefere fazer a análise e decidir sozinho?
+
+Com o projeto no GitHub, você tem o ponto de restauração para fazer qualquer melhoria com segurança. 🚀

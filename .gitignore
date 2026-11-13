@@ -20,3 +20,8 @@ __pycache__/
 # Mosquitto (se um dia mudar o volume para pasta local)
 mosquitto/data/
 mosquitto/log/
+
+# Backups (dados, não código)
+backups/*.sql
+backups/*.tar.gz
+backups/*.zip
