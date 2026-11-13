@@ -22,3 +22,15 @@ A jornada completa do projeto está documentada em 12 arquivos.
 - **Reproduzir o projeto:** leia `README.md` e depois 01 → 12.
 - **Entender uma decisão:** procure o arquivo na tabela.
 - **Contribuir:** leia `README.md`, `Makefile` e `docs/adr/` (quando existir).
+
+## 🏛️ ADRs (Architecture Decision Records)
+
+| # | ADR | Decisão |
+|---|---|---|
+| 000 | [template](adr/000-template.md) | Modelo para futuros ADRs |
+| 001 | [broker-mqtt-local](adr/001-broker-mqtt-local.md) | Mosquitto local em vez de broker público |
+| 002 | [bridge-mqtt](adr/002-bridge-mqtt.md) | Bridge MQTT em vez de conexão direta |
+| 003 | [zabbix-via-api](adr/003-zabbix-via-api.md) | Zabbix via API (IaC) em vez de cliques |
+| 004 | [3d-via-iframe](adr/004-3d-via-iframe.md) | NOC 3D via iframe em vez de plugin nativo |
+| 005 | [grafana-via-json](adr/005-grafana-via-json.md) | Grafana via JSON em vez de cliques |
+| 006 | [makefile](adr/006-makefile.md) | Makefile como porta de entrada |
