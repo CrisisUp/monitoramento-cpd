@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/CrisisUp/monitoramento-cpd/firmware/status-schema.json",
+  "title": "RackMonitor Status",
+  "description": "Schema do payload do tópico rack_monitor_ABCD1234/status",
+  "version": "1.0",
+  "type": "object",
+  "required": [
+    "estado",
+    "modo",
+    "ts",
+    "time_source",
+    "nonce",
+    "porta",
+    "luz",
+    "dist_cm",
+    "ativo",
+    "ip",
+    "acessos",
+    "invasoes",
+    "rearmes",
+    "alerta_temp",
+    "critico_temp",
+    "alerta_umid",
+    "critico_umid",
+    "taxa_temp_alerta",
+    "ambiente",
+    "temp_c",
+    "umid_pct"
+  ],
+  "properties": {
+    "estado": {
+      "type": "string",
+      "enum": [
+        "NORMAL",
+        "AVISO SALA",
+        "APROXIMACAO RACK",
+        "EMERGENCIA RACK",
+        "INVASAO SALA",
+        "ACESSO RFID"
+      ]
+    },
+    "modo": {
+      "type": "string",
+      "enum": [
+        "ARMADO",
+        "DESARMADO"
+      ]
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "time_source": {
+      "type": "string",
+      "enum": [
+        "RTC",
+        "NTP",
+        "MILLIS"
+      ]
+    },
+    "nonce": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "porta": {
+      "type": "boolean"
+    },
+    "luz": {
+      "type": "boolean"
+    },
+    "dist_cm": {
+      "type": "number",
+      "minimum": -1
+    },
+    "ativo": {
+      "type": "boolean"
+    },
+    "ip": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "uid": {
+      "type": "string"
+    },
+    "acessos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "invasoes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rearmes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "alerta_temp": {
+      "type": "boolean"
+    },
+    "critico_temp": {
+      "type": "boolean"
+    },
+    "alerta_umid": {
+      "type": "boolean"
+    },
+    "critico_umid": {
+      "type": "boolean"
+    },
+    "taxa_temp_alerta": {
+      "type": "boolean"
+    },
+    "ambiente": {
+      "type": "string",
+      "enum": [
+        "OK",
+        "ALERTA",
+        "CRITICO"
+      ]
+    },
+    "temp_c": {
+      "type": "number",
+      "minimum": -50,
+      "maximum": 100
+    },
+    "umid_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "additionalProperties": false
+}

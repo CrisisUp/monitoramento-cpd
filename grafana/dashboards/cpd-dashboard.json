@@ -1,304 +1,790 @@
 {
   "annotations": {
-    "list": [
-      {
-        "builtIn": 1,
-        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
-      }
-    ]
+    "list": []
   },
   "description": "Monitoramento do CPD em tempo real via MQTT + Zabbix",
-  "editable": false,
+  "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
-  "id": null,
-  "links": [],
+  "graphTooltip": 0,
+  "id": 4378465638473728,
   "liveNow": true,
   "panels": [
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
-      "id": 100,
-      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 6,
       "title": "Sensores ambientais",
       "type": "row"
     },
     {
-      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "datasource": {
+        "type": "alexanderzobnin-zabbix-datasource",
+        "uid": "zabbix"
+      },
       "description": "Temperatura atual do rack (°C). Faixas: verde até 28°C, amarelo 28-32°C, vermelho acima de 32°C.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "decimals": 1,
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 28 },
-              { "color": "red", "value": 32 }
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 28
+              },
+              {
+                "color": "red",
+                "value": 32
+              }
             ]
           },
           "unit": "celsius"
-        },
-        "overrides": []
+        }
       },
-      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 1 },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
       "id": 1,
       "options": {
         "colorMode": "background_solid",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.5",
       "targets": [
         {
-          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
-          "item": { "key": "esp32.temp" },
+          "application": {
+            "filter": ""
+          },
+          "countTriggersBy": "",
+          "datasource": {
+            "type": "alexanderzobnin-zabbix-datasource",
+            "uid": "zabbix"
+          },
+          "evaltype": "0",
+          "functions": [],
+          "group": {
+            "filter": "CPD"
+          },
+          "host": {
+            "filter": "Rack CPD"
+          },
+          "item": {
+            "filter": "Temperatura"
+          },
+          "itemTag": {
+            "filter": ""
+          },
+          "macro": {
+            "filter": ""
+          },
+          "options": {
+            "count": false,
+            "disableDataAlignment": false,
+            "showDisabledItems": false,
+            "skipEmptyValues": false,
+            "useTrends": "default",
+            "useZabbixValueMapping": false
+          },
+          "proxy": {
+            "filter": ""
+          },
           "queryType": "0",
-          "refId": "A"
+          "refId": "A",
+          "resultFormat": "time_series",
+          "schema": 13,
+          "table": {
+            "skipEmptyValues": false
+          },
+          "tags": {
+            "filter": ""
+          },
+          "textFilter": "",
+          "trigger": {
+            "filter": ""
+          }
         }
       ],
       "title": "Temperatura",
       "type": "stat"
     },
     {
-      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "datasource": {
+        "type": "alexanderzobnin-zabbix-datasource",
+        "uid": "zabbix"
+      },
       "description": "Umidade relativa do ar (%). Faixas: verde até 65%, amarelo 65-80%, vermelho acima de 80%.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "decimals": 1,
-          "mappings": [],
+          "max": 100,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 65 },
-              { "color": "red", "value": 80 }
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 65
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "percent"
-        },
-        "overrides": []
+        }
       },
-      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 1 },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
       "id": 2,
       "options": {
         "colorMode": "background_solid",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.5",
       "targets": [
         {
-          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
-          "item": { "key": "esp32.umid" },
+          "application": {
+            "filter": ""
+          },
+          "countTriggersBy": "",
+          "datasource": {
+            "type": "alexanderzobnin-zabbix-datasource",
+            "uid": "zabbix"
+          },
+          "evaltype": "0",
+          "functions": [],
+          "group": {
+            "filter": "CPD"
+          },
+          "host": {
+            "filter": "Rack CPD"
+          },
+          "item": {
+            "filter": "Umidade"
+          },
+          "itemTag": {
+            "filter": ""
+          },
+          "macro": {
+            "filter": ""
+          },
+          "options": {
+            "count": false,
+            "disableDataAlignment": false,
+            "showDisabledItems": false,
+            "skipEmptyValues": false,
+            "useTrends": "default",
+            "useZabbixValueMapping": false
+          },
+          "proxy": {
+            "filter": ""
+          },
           "queryType": "0",
-          "refId": "A"
+          "refId": "A",
+          "resultFormat": "time_series",
+          "schema": 13,
+          "table": {
+            "skipEmptyValues": false
+          },
+          "tags": {
+            "filter": ""
+          },
+          "textFilter": "",
+          "trigger": {
+            "filter": ""
+          }
         }
       ],
       "title": "Umidade",
       "type": "stat"
     },
     {
-      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "datasource": {
+        "type": "alexanderzobnin-zabbix-datasource",
+        "uid": "zabbix"
+      },
       "description": "Modo atual do vigilante. ARMADO (azul) ou DESARMADO (laranja).",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds", "fixedColor": "blue" },
+          "color": {
+            "fixedColor": "blue",
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
           "mappings": [
-            { "options": { "ARMADO": { "color": "blue", "index": 0 } }, "type": "value" },
-            { "options": { "DESARMADO": { "color": "orange", "index": 1 } }, "type": "value" }
+            {
+              "type": "value",
+              "options": {
+                "ARMADO": {
+                  "color": "blue",
+                  "index": 0
+                },
+                "DESARMADO": {
+                  "color": "orange",
+                  "index": 1
+                }
+              }
+            }
           ],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{ "color": "blue", "value": null }]
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              }
+            ]
           }
-        },
-        "overrides": []
+        }
       },
-      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
       "id": 3,
       "options": {
+        "cellHeight": "lg",
         "displayMode": "gradient",
         "showHeader": false,
-        "cellHeight": "lg"
+        "reduceOptions": {
+          "fields": "/.*/"
+        }
       },
+      "pluginVersion": "13.2.5",
       "targets": [
         {
-          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
-          "item": { "key": "esp32.modo" },
-          "queryType": "0",
-          "refId": "A"
+          "application": {
+            "filter": ""
+          },
+          "countTriggersBy": "",
+          "datasource": {
+            "type": "alexanderzobnin-zabbix-datasource",
+            "uid": "zabbix"
+          },
+          "evaltype": "0",
+          "functions": [],
+          "group": {
+            "filter": "CPD"
+          },
+          "host": {
+            "filter": "Rack CPD"
+          },
+          "item": {
+            "filter": "Modo"
+          },
+          "itemTag": {
+            "filter": ""
+          },
+          "macro": {
+            "filter": ""
+          },
+          "options": {
+            "count": false,
+            "disableDataAlignment": false,
+            "showDisabledItems": false,
+            "skipEmptyValues": false,
+            "useTrends": "default",
+            "useZabbixValueMapping": false
+          },
+          "proxy": {
+            "filter": ""
+          },
+          "queryType": "2",
+          "refId": "A",
+          "resultFormat": "time_series",
+          "schema": 13,
+          "table": {
+            "skipEmptyValues": false
+          },
+          "tags": {
+            "filter": ""
+          },
+          "textFilter": "",
+          "trigger": {
+            "filter": ""
+          }
         }
       ],
       "title": "Modo",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": { "Time": true },
-            "renameByName": { "Modo": "Modo" }
-          }
-        }
-      ],
-      "type": "table"
+      "transformations": [],
+      "type": "stat"
     },
     {
-      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "datasource": {
+        "type": "alexanderzobnin-zabbix-datasource",
+        "uid": "zabbix"
+      },
       "description": "Estado de segurança do CPD. NORMAL, EMERGENCIA RACK, INVASAO SALA, etc.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
           "mappings": [
-            { "options": { "NORMAL": { "color": "green", "index": 0 } }, "type": "value" },
-            { "options": { "AVISO SALA": { "color": "yellow", "index": 1 } }, "type": "value" },
-            { "options": { "APROXIMACAO RACK": { "color": "orange", "index": 2 } }, "type": "value" },
-            { "options": { "EMERGENCIA RACK": { "color": "red", "index": 3 } }, "type": "value" },
-            { "options": { "INVASAO SALA": { "color": "red", "index": 4 } }, "type": "value" },
-            { "options": { "ACESSO RFID": { "color": "purple", "index": 5 } }, "type": "value" }
+            {
+              "type": "value",
+              "options": {
+                "NORMAL": {
+                  "color": "green",
+                  "index": 0
+                },
+                "AVISO SALA": {
+                  "color": "yellow",
+                  "index": 1
+                },
+                "APROXIMACAO RACK": {
+                  "color": "orange",
+                  "index": 2
+                },
+                "EMERGENCIA RACK": {
+                  "color": "red",
+                  "index": 3
+                },
+                "INVASAO SALA": {
+                  "color": "red",
+                  "index": 4
+                },
+                "ACESSO RFID": {
+                  "color": "purple",
+                  "index": 5
+                }
+              }
+            }
           ],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           }
-        },
-        "overrides": []
+        }
       },
-      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 1 },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
       "id": 4,
       "options": {
+        "cellHeight": "lg",
         "displayMode": "gradient",
         "showHeader": false,
-        "cellHeight": "lg"
+        "reduceOptions": {
+          "fields": "/.*/"
+        }
       },
+      "pluginVersion": "13.2.5",
       "targets": [
         {
-          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
-          "item": { "key": "esp32.estado" },
-          "queryType": "0",
-          "refId": "A"
+          "application": {
+            "filter": ""
+          },
+          "countTriggersBy": "",
+          "datasource": {
+            "type": "alexanderzobnin-zabbix-datasource",
+            "uid": "zabbix"
+          },
+          "evaltype": "0",
+          "functions": [],
+          "group": {
+            "filter": "CPD"
+          },
+          "host": {
+            "filter": "Rack CPD"
+          },
+          "item": {
+            "filter": "Estado"
+          },
+          "itemTag": {
+            "filter": ""
+          },
+          "macro": {
+            "filter": ""
+          },
+          "options": {
+            "count": false,
+            "disableDataAlignment": false,
+            "showDisabledItems": false,
+            "skipEmptyValues": false,
+            "useTrends": "default",
+            "useZabbixValueMapping": false
+          },
+          "proxy": {
+            "filter": ""
+          },
+          "queryType": "2",
+          "refId": "A",
+          "resultFormat": "time_series",
+          "schema": 13,
+          "table": {
+            "skipEmptyValues": false
+          },
+          "tags": {
+            "filter": ""
+          },
+          "textFilter": "",
+          "trigger": {
+            "filter": ""
+          }
         }
       ],
       "title": "Estado",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": { "Time": true },
-            "renameByName": { "Estado": "Estado" }
-          }
-        }
-      ],
-      "type": "table"
+      "transformations": [],
+      "type": "stat"
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
-      "id": 101,
-      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 7,
       "title": "Histórico (30 min)",
       "type": "row"
     },
     {
-      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "datasource": {
+        "type": "alexanderzobnin-zabbix-datasource",
+        "uid": "zabbix"
+      },
       "description": "Temperatura e umidade dos últimos 30 minutos. Temperatura em °C, umidade em %.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 20,
             "gradientMode": "opacity",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Temperatura" },
+            "matcher": {
+              "id": "byName",
+              "options": "Temperatura"
+            },
             "properties": [
-              { "id": "unit", "value": "celsius" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+              {
+                "id": "unit",
+                "value": "celsius"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Umidade" },
+            "matcher": {
+              "id": "byName",
+              "options": "Umidade"
+            },
             "properties": [
-              { "id": "unit", "value": "percent" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } },
-              { "id": "custom.axisPlacement", "value": "right" }
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
             ]
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 10 },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
       "id": 5,
       "options": {
         "legend": {
-          "calcs": ["lastNotNull", "mean", "max"],
+          "calcs": [
+            "lastNotNull",
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
         },
-        "tooltip": { "mode": "multi", "sort": "none" }
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
       },
+      "pluginVersion": "13.2.5",
       "targets": [
         {
-          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
-          "item": { "key": "esp32.temp" },
+          "application": {
+            "filter": ""
+          },
+          "countTriggersBy": "",
+          "datasource": {
+            "type": "alexanderzobnin-zabbix-datasource",
+            "uid": "zabbix"
+          },
+          "evaltype": "0",
+          "functions": [],
+          "group": {
+            "filter": "CPD"
+          },
+          "host": {
+            "filter": "Rack CPD"
+          },
+          "item": {
+            "filter": "Temperatura"
+          },
+          "itemTag": {
+            "filter": ""
+          },
+          "macro": {
+            "filter": ""
+          },
+          "options": {
+            "count": false,
+            "disableDataAlignment": false,
+            "showDisabledItems": false,
+            "skipEmptyValues": false,
+            "useTrends": "default",
+            "useZabbixValueMapping": false
+          },
+          "proxy": {
+            "filter": ""
+          },
           "queryType": "0",
-          "refId": "A"
+          "refId": "A",
+          "resultFormat": "time_series",
+          "schema": 13,
+          "table": {
+            "skipEmptyValues": false
+          },
+          "tags": {
+            "filter": ""
+          },
+          "textFilter": "",
+          "trigger": {
+            "filter": ""
+          }
         },
         {
-          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
-          "item": { "key": "esp32.umid" },
+          "application": {
+            "filter": ""
+          },
+          "countTriggersBy": "",
+          "datasource": {
+            "type": "alexanderzobnin-zabbix-datasource",
+            "uid": "zabbix"
+          },
+          "evaltype": "0",
+          "functions": [],
+          "group": {
+            "filter": "CPD"
+          },
+          "host": {
+            "filter": "Rack CPD"
+          },
+          "item": {
+            "filter": "Umidade"
+          },
+          "itemTag": {
+            "filter": ""
+          },
+          "macro": {
+            "filter": ""
+          },
+          "options": {
+            "count": false,
+            "disableDataAlignment": false,
+            "showDisabledItems": false,
+            "skipEmptyValues": false,
+            "useTrends": "default",
+            "useZabbixValueMapping": false
+          },
+          "proxy": {
+            "filter": ""
+          },
           "queryType": "0",
-          "refId": "B"
+          "refId": "B",
+          "resultFormat": "time_series",
+          "schema": 13,
+          "table": {
+            "skipEmptyValues": false
+          },
+          "tags": {
+            "filter": ""
+          },
+          "textFilter": "",
+          "trigger": {
+            "filter": ""
+          }
         }
       ],
       "title": "Temperatura e Umidade",
       "type": "timeseries"
     }
   ],
+  "preload": false,
   "refresh": "10s",
-  "schemaVersion": 39,
-  "tags": ["cpd", "rackmonitor"],
-  "templating": { "list": [] },
-  "time": { "from": "now-30m", "to": "now" },
-  "timepicker": {},
+  "schemaVersion": 42,
+  "tags": [
+    "cpd",
+    "rackmonitor"
+  ],
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
   "timezone": "browser",
   "title": "CPD Dashboard",
   "uid": "cpd-dashboard",
-  "version": 1,
-  "weekStart": ""
+  "version": 4
 }

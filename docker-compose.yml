@@ -1,5 +1,7 @@
+# ============================================================
 # monitoramento-cpd/docker-compose.yml
-# Passo 0 — base: Mosquitto + Zabbix (server/web) + Grafana + Postgres
+# Stack completa: Mosquitto + Zabbix + Grafana + Postgres + Observabilidade
+# ============================================================
 
 services:
   # ---------------------------------------------------------------
@@ -69,6 +71,7 @@ services:
         condition: service_healthy
     networks:
       - cpd-net
+
   # ---------------------------------------------------------------
   # Zabbix Web — interface + API
   # ---------------------------------------------------------------
@@ -114,16 +117,97 @@ services:
       - ./grafana/config/grafana.ini:/etc/grafana/grafana.ini:ro
       - ./grafana/noc:/usr/share/grafana/public/grafana-custom/noc:ro
       - ./firmware:/usr/share/grafana/public/grafana-custom/firmware:ro
-      
     networks:
       - cpd-net
 
+  # ---------------------------------------------------------------
+  # OBSERVABILIDADE — Prometheus + Exporters
+  # ---------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: cpd-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - cpd-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mosquitto-exporter:
+    image: jryberg/mosquitto-exporter:v0.7.9
+    container_name: cpd-mosquitto-exporter
+    restart: unless-stopped
+    environment:
+      BROKER_ENDPOINT: "tcp://cpd-mosquitto:1883"
+    ports:
+      - "9234:9234"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - cpd-net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.2
+    container_name: cpd-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    networks:
+      - cpd-net
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: cpd-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9101:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - cpd-net
+
+# ============================================================
+# Redes
+# ============================================================
 networks:
   cpd-net:
     driver: bridge
 
+# ============================================================
+# Volumes
+# ============================================================
 volumes:
   mosquitto_data:
   mosquitto_log:
   postgres_data:
   grafana_data:
+  prometheus_data:
