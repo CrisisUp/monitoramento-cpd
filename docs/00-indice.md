@@ -34,3 +34,10 @@ A jornada completa do projeto está documentada em 12 arquivos.
 | 004 | [3d-via-iframe](adr/004-3d-via-iframe.md) | NOC 3D via iframe em vez de plugin nativo |
 | 005 | [grafana-via-json](adr/005-grafana-via-json.md) | Grafana via JSON em vez de cliques |
 | 006 | [makefile](adr/006-makefile.md) | Makefile como porta de entrada |
+
+### ADRs adicionais
+
+| # | ADR | Decisão |
+|---|---|---|
+| 007 | [windows-10-producao](adr/007-windows-10-producao.md) | Windows 10 como ambiente de produção (legado) |
+| 008 | [windows-11-producao](adr/008-windows-11-producao.md) | Windows 11 como ambiente de produção (futuro) |
