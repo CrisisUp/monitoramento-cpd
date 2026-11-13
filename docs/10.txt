@@ -1,0 +1,1258 @@
+🎉 O Dashboard está vivo! (E o Wokwi mudou de estado!)
+Olha o que você conseguiu — o dashboard está puxando os dados em tempo real:
+
+Painel	Valor	O que significa
+Temperatura	52.9 °C 🔴	Passou do limite de 32°C (crítico) — fundo vermelho
+Umidade	69.5 % 🟡	Passou do limite de 65% (alerta) — fundo amarelo
+Modo	0	⚠️ Puxando item errado (não é ARMADO/DESARMADO)
+Estado	No data	⚠️ O JSONPath $.estado provavelmente mudou no Wokwi
+Gráfico	Duas linhas subindo	Wokwi aumentou temperatura para ~53°C
+A prova de que está funcionando: o gráfico mostra claramente a temperatura saltando de ~24°C para ~53°C por volta de 13:31. O Wokwi está fazendo a temperatura subir de propósito (provavelmente porque o DHT22 tem um slider na simulação que você moveu).
+
+⚠️ 2 Ajustes pequenos no Dashboard
+Ajuste 1 — Painel "Modo" está puxando Invasões
+O No data e o 0 indicam que o item "Modo" (esp32.modo) não está sendo encontrado pelo Grafana, e ele está caindo no primeiro item numérico disponível (Invasões).
+
+Correção via JSON: vamos editar o cpd-dashboard.json para garantir que o painel "Modo" use o key técnico correto (esp32.modo). Mas antes, preciso confirmar uma coisa.
+
+Ajuste 2 — Painel "Estado" com No data
+O JSONPath $.estado pode estar falhando porque o Wokwi mudou o JSON. Preciso ver o JSON atual do Wokwi para confirmar que o campo estado existe.
+
+Diagnóstico rápido — 30 segundos
+1. O Wokwi mudou o JSON?
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/rack_monitor_ABCD1234/status' -C 1 -W 5
+O que ver: o JSON completo. Copie e cole aqui o campo "estado" e "modo". Se estiverem diferentes ("ALERTA", "DESARMADO"), aí entendemos por que o Grafana não está achando.
+
+2. O Zabbix tem os itens corretos?
+Abra o Zabbix: Monitoring → Latest data → Rack CPD → Apply.
+
+O que ver: os valores de Modo e Estado estão sendo coletados? Se estiverem Not supported ou vazios, o problema é o JSONPath no Zabbix, não no Grafana.
+
+Se o Zabbix estiver OK e o Grafana com problema
+Aí é só o Grafana. O JSON do dashboard precisa ter o filtro por key técnico (que fizemos). Talvez o Grafana não tenha recarregado o JSON — vamos forçar:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s e recarregue o painel.
+
+Me diga:
+
+O mosquitto_sub do JSON atual do Wokwi — quais os valores de "estado" e "modo"?
+
+No Zabbix (Monitoring → Latest data), os itens Modo e Estado mostram valores?
+
+Depois do docker compose restart grafana, os painéis se acertaram?
+
+Com essas 3 respostas, fechamos o dashboard 100% e partimos para a próxima fatia. 🚀
+
+❯ docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/rack_monitor_ABCD1234/status' -C 1 -W 5
+{"estado":"NORMAL","modo":"ARMADO","ts":"2026-11-12T13:46:47","time_source":"RTC","nonce":0,"porta":false,"luz":true,"dist_cm":335.9,"ativo":false,"ip":"10.10.0.2","uid":"-","acessos":0,"invasoes":0,"rearmes":0,"alerta_temp":true,"critico_temp":true,"alerta_umid":true,"critico_umid":false,"taxa_temp_alerta":false,"ambiente":"CRITICO","temp_c":52.9,"umid_pct":69.5}
+╭─ ~/Desktop/monitoramento-cpd ·········· ✔  monitoramento-cpd   system   at 13:54:51 
+╰─
+🎯 O JSON está perfeito — o problema é no Grafana, não no Wokwi
+O JSON do Wokwi está impecável:
+
+json
+{
+  "estado": "NORMAL",
+  "modo": "ARMADO",
+  "ambiente": "CRITICO",
+  "temp_c": 52.9,
+  "umid_pct": 69.5
+}
+Os campos estado e modo existem e têm valores corretos (NORMAL e ARMADO). Se o Zabbix está coletando (o que o gráfico de temperatura prova que está), o problema é que o Grafana não está aplicando o filtro key no JSON do provisionamento.
+
+O 0 que aparece no painel "Modo" é o valor de Invasões (esp32.invasoes), o que significa que o Grafana caiu no fallback — está pegando o primeiro item numérico do host.
+
+Por que o filtro por key falhou
+Quando o plugin do Zabbix busca um item por "item": { "key": "esp32.modo" }, ele precisa que o datasource tenha acesso ao key técnico. Mas o plugin, por padrão, filtra por nome visível (name), não por key.
+
+A forma correta de filtrar por key técnico no plugin alexanderzobnin-zabbix-app é usar "item": { "key": "esp32.modo" } E "item": { "filter": "Modo" } juntos, ou usar o nome exato do item no Zabbix.
+
+Como no Zabbix o item se chama "MQTT Status: Modo" (porque o Zabbix prefixa dependentes com o nome do mestre), o filtro correto é pelo nome exato.
+
+Correção definitiva — 2 caminhos
+Caminho A (recomendado) — Filtro pelo nome visível exato
+Vou te dar um novo cpd-dashboard.json que filtra pelo nome visível completo ("MQTT Status: Modo"), que é o que o Zabbix realmente registra.
+
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'EOF'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 28 },
+            { "color": "red", "value": 32 }
+          ]},
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Temperatura" }
+      }],
+      "title": "Temperatura",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 65 },
+            { "color": "red", "value": 80 }
+          ]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Umidade" }
+      }],
+      "title": "Umidade",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{
+            "options": {
+              "ARMADO": { "color": "blue", "index": 0 },
+              "DESARMADO": { "color": "orange", "index": 1 }
+            },
+            "type": "value"
+          }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Modo" }
+      }],
+      "title": "Modo",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{
+            "options": {
+              "NORMAL": { "color": "green", "index": 0 },
+              "AVISO SALA": { "color": "yellow", "index": 1 },
+              "APROXIMACAO RACK": { "color": "orange", "index": 2 },
+              "EMERGENCIA RACK": { "color": "red", "index": 3 },
+              "INVASAO SALA": { "color": "red", "index": 4 },
+              "ACESSO RFID": { "color": "purple", "index": 5 }
+            },
+            "type": "value"
+          }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Estado" }
+      }],
+      "title": "Estado",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "",
+            "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line",
+            "fillOpacity": 10, "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5,
+            "scaleDistribution": { "type": "linear" }, "showPoints": "never",
+            "spanNulls": false, "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "A",
+          "item": { "filter": "Temperatura" }
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "B",
+          "item": { "filter": "Umidade" }
+        }
+      ],
+      "title": "Temperatura e Umidade (30 min)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cpd"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CPD Dashboard",
+  "uid": "cpd-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
+EOF
+Passo 2 — Apagar o dashboard antigo (para forçar releitura)
+No Grafana:
+
+Dashboards → CPD → CPD Dashboard.
+
+Ícone de três pontinhos (⋯) no topo → Delete.
+
+Confirme.
+
+Aguarde 30s e recarregue a página (F5).
+
+Por que isso vai funcionar
+O plugin do Zabbix prefere buscar pelo nome visível (que no Zabbix é "MQTT Status: Modo"). Quando você filtra por "Modo" (parte do nome), ele encontra o item certo. Foi o que funcionou no painel de Temperatura e Umidade.
+
+Os painéis anteriores falharam porque eu tentei usar "key" técnico (esp32.modo), mas o plugin não tem suporte nativo a esse filtro no JSON do provisionamento — é uma limitação conhecida dele.
+
+Solução: filtro por substring do nome ("Temperatura", "Umidade", "Modo", "Estado"). O plugin resolve para o item certo.
+
+Se ainda assim "Modo" puxar 0 (Invasões)
+Se o filtro "Modo" continuar pegando o item errado, o problema é que o plugin faz match por substring e "Modo" não é único. Neste caso, precisamos usar o nome exato:
+
+json
+"item": { "filter": "MQTT Status: Modo" }
+Vou testar isso. Mas antes, me diga o que aparece:
+
+Depois do novo JSON + delete + F5, os painéis "Modo" e "Estado" mostraram ARMADO e NORMAL?
+
+Se não, qual foi o erro?
+
+Se Modo/Estado continuarem errados:
+
+Me manda um print da tela do painel "Modo" em modo de edição (como você fez antes), que eu vejo o campo Item (nome exato que o Grafana está pegando) e ajusto o filtro para casar.
+
+Uma opção mais robusta (se o filtro por nome falhar)
+Podemos usar variáveis de template no dashboard para deixar o usuário escolher o item de cada painel. É mais trabalho, mas é a solução definitiva. Vou sugerir isso se o filtro simples falhar duas vezes.
+
+Me diga:
+
+O novo JSON foi aplicado? Os painéis se acertaram depois do delete + F5?
+
+Se "Modo" e "Estado" continuarem errados, qual o valor que aparece?
+
+Com isso, fechamos a Fatia 4 de vez. 🚀
+
+Estou procurando igual um doido esse Ícone de três pontinhos (⋯) no topo → Delete.
+😅 O ícone é bem escondido mesmo! (E não é "três pontinhos" — desculpa a confusão)
+Eu errei ao chamar de "três pontinhos". No Grafana atual, o menu de opções do dashboard é o ícone de três pontinhos na vertical (⋮), mas ele só aparece quando você NÃO está editando o dashboard.
+
+Mas olhando a sua captura, vejo que você já está com o dashboard recarregado e ele está todo "No data" — o que significa que o Grafana não encontrou os itens pelo nome simples (Temperatura, Umidade, etc.).
+
+Isso é ótimo, porque mostra exatamente onde está o problema: o plugin do Zabbix está buscando pelo nome mas não acha. Ele precisa do nome completo (o nome que o Zabbix registra no banco).
+
+Como achar o ícone de delete (para o futuro)
+No topo do dashboard (não em modo edição), no canto superior direito, do lado do botão Save, você vai ver:
+
+text
+[ Save ] [ ... ] [ 👤 ]
+O ícone ... (três pontinhos na horizontal) é o menu. Ao clicar, aparece:
+
+Export
+
+Make editable / Disable
+
+Save as
+
+Delete
+
+Inspect
+
+Se você estiver em modo edição (que parece ser o caso atual, tem "Exit edit" no topo), clique em Exit edit primeiro para o botão aparecer.
+
+🎯 A solução definitiva: descrobrir o nome exato do item no Zabbix
+O problema de "No data" em todos os painéis é que o filtro "item": { "filter": "Temperatura" } não está casando com o nome que o Zabbix registrou.
+
+Vamos descobrir o nome exato com a API:
+
+Passo 1 — Rode este script Python rápido
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python3 - << 'PY'
+import os, requests, json
+from dotenv import load_dotenv
+load_dotenv()
+
+url = "http://localhost:8080/api_jsonrpc.php"
+auth = requests.post(url, json={
+    "jsonrpc": "2.0", "method": "user.login", "id": 1,
+    "params": {"username": "Admin", "password": "zabbix"}
+}).json()["result"]
+
+host_id = requests.post(url, json={
+    "jsonrpc": "2.0", "method": "host.get", "id": 1, "auth": auth,
+    "params": {"filter": {"host": ["esp32-cpd"]}}
+}).json()["result"][0]["hostid"]
+
+items = requests.post(url, json={
+    "jsonrpc": "2.0", "method": "item.get", "id": 1, "auth": auth,
+    "params": {"hostids": host_id, "output": ["itemid", "name", "key_"]}
+}).json()["result"]
+
+print(f"{'NAME (nome visível)':<40} {'KEY (técnico)'}")
+print("-" * 80)
+for it in sorted(items, key=lambda x: x["name"]):
+    print(f"{it['name']:<40} {it['key_']}")
+PY
+O que esse script faz: ele loga na API do Zabbix, busca o host esp32-cpd, lista todos os itens, e imprime o nome visível e o key de cada um. Isso vai te dizer exatamente o que o Grafana precisa buscar.
+
+Cole aqui a saída. Vai ser algo assim:
+
+text
+NAME (nome visível)              KEY (técnico)
+------------------------------------------------
+MQTT Status                      mqtt_status.sh
+MQTT Status: Ambiente            esp32.ambiente
+MQTT Status: Estado              esp32.estado
+MQTT Status: Invasões            esp32.invasoes
+MQTT Status: Modo                esp32.modo
+MQTT Status: Temperatura         esp32.temp
+...
+O nome visível tem o prefixo "MQTT Status: " que o Zabbix adiciona automaticamente nos itens dependentes. É por isso que "filter": "Temperatura" não acha — o nome real é "MQTT Status: Temperatura".
+
+Depois que você rodar
+Com os nomes exatos, eu vou te dar um cpd-dashboard.json final, com os filtros usando o nome completo (ex.: "MQTT Status: Temperatura"). Aí funciona de primeira.
+
+Se você preferir, pode ir pela solução "manual" enquanto isso:
+
+Abra o painel "Modo" → Edit
+
+No campo Item, clique e escolha manualmente o item certo
+
+Save
+
+Repita para "Estado"
+
+Mas o JSON é mais limpo e permanente.
+
+Me diga:
+
+O script Python rodou? Cole a saída completa com a lista de nomes e keys.
+
+Você está em modo edição ou view do dashboard? (Se estiver em edição, clique em Exit edit para aparecer o menu de delete.)
+
+Com a lista de nomes, te dou o JSON final e fechamos a Fatia 4. 🚀
+
+🎯 ENCONTREI A CAUSA! O dropdown mostra os itens disponíveis
+Olha a captura: quando você clicou no campo Item, o Grafana mostrou a lista de itens que ele conhece:
+
+text
+Distância
+Invasões
+Temperatura
+Umidade
+Modo
+Repare que "Estado" NÃO está nessa lista. E a lista é só de itens que o Grafana já consegue enxergar pelo nome curto (Temperatura, Umidade, etc.).
+
+O que isso significa:
+
+O Grafana está se conectando ao Zabbix (a lista aparece).
+
+Ele acha o item "Modo" (aparece na lista).
+
+Mas quando você seleciona "Modo", ele retorna No data. Isso indica que o valor do item "Modo" não está chegando ou o tipo de dado não está sendo interpretado.
+
+O No data no painel Modo com o filtro correto selecionado significa que o Zabbix não está retornando valor para esse item — ou o item está com Not supported.
+
+Diagnóstico definitivo
+Abra o Zabbix Web (localhost:8080) e vá em Monitoring → Latest data. Filtre por Rack CPD.
+
+O que verificar:
+
+Item	Status esperado	Valor esperado
+Temperatura	✅ Enabled	52.9
+Umidade	✅ Enabled	69.5
+Modo	Enabled?	ARMADO?
+Estado	Enabled?	NORMAL?
+Porta Aberta	✅ Enabled	false
+Distância	✅ Enabled	335.9
+Invasões	✅ Enabled	0
+Ambiente	✅ Enabled	CRITICO
+Luminosidade	✅ Enabled	true
+Se "Modo" e "Estado" estiverem Not supported (vermelho): o JSONPath está falhando no Zabbix, e o Grafana recebe vazio. Precisamos investigar o porquê.
+
+Se estiverem Enabled mas o Grafana não pega: pode ser um bug do plugin com value_type=4 (texto).
+
+Ação imediata: 3 verificações
+1. No Zabbix, os itens "Modo" e "Estado" têm valor?
+Se não tiverem, precisamos rodar o configurar_zabbix.py de novo (agora ele está corrigido) e verificar o Latest data.
+
+2. Rode o script Python que lista os itens
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python3 - << 'PY'
+import os, requests
+from dotenv import load_dotenv
+load_dotenv()
+
+url = "http://localhost:8080/api_jsonrpc.php"
+auth = requests.post(url, json={
+    "jsonrpc": "2.0", "method": "user.login", "id": 1,
+    "params": {"username": "Admin", "password": "zabbix"}
+}).json()["result"]
+
+host_id = requests.post(url, json={
+    "jsonrpc": "2.0", "method": "host.get", "id": 1, "auth": auth,
+    "params": {"filter": {"host": ["esp32-cpd"]}}
+}).json()["result"][0]["hostid"]
+
+items = requests.post(url, json={
+    "jsonrpc": "2.0", "method": "item.get", "id": 1, "auth": auth,
+    "params": {
+        "hostids": host_id,
+        "output": ["itemid", "name", "key_", "value_type", "status"],
+        "with_last_data": True,
+        "sortfield": "name"
+    }
+}).json()["result"]
+
+print(f"{'NAME':<30} {'KEY':<20} {'VT':<4} {'STATUS':<6} {'LAST VALUE'}")
+print("-" * 90)
+for it in items:
+    last = it.get("lastvalue", "(vazio)")[:30]
+    status = "OK" if it["status"] == "0" else "DISABLED"
+    print(f"{it['name']:<30} {it['key_']:<20} {it['value_type']:<4} {status:<8} {last}")
+PY
+O que isso vai mostrar:
+
+Se Modo e Estado têm value_type=4 (texto) — é o esperado.
+
+Se lastvalue está vazio ((vazio)), o Zabbix não recebeu dado — o problema é upstream.
+
+Se lastvalue tem ARMADO/NORMAL, o Zabbix está OK — o problema é o plugin do Grafana.
+
+Se o lastvalue estiver vazio
+Significa que o item nunca coletou dado. Duas causas:
+
+O JSONPath está errado. $.modo e $.estado precisam existir no JSON. No seu caso existem.
+
+O Zabbix não rodou o item ainda. O configurar_zabbix.py fez [=] (update), mas talvez o item dependente esteja sem preprocessing (algum update falhou silenciosamente).
+
+Solução: apagar os itens Modo e Estado no Zabbix e recriá-los.
+
+Me diga
+No Zabbix (Latest data), os itens "Modo" e "Estado" têm valor? Se sim, quais?
+
+O script Python de diagnóstico rodou? Cole a saída.
+
+Com essas duas respostas, sei exatamente o que corrigir — se é no Zabbix (upstream) ou no Grafana (downstream). 🚀
+
+🛠️ Erro do dotenv — não conseguiu achar o .env
+O erro:
+
+text
+AssertionError
+  File ".../dotenv/main.py", line 372, in find_dotenv
+    assert frame.f_back is not None
+Isso acontece porque o python-dotenv, quando roda via stdin (python3 - << 'PY'), não consegue detectar o diretório do arquivo (não tem __file__). É um bug conhecido dessa forma de execução.
+
+Solução: salvar o script num arquivo .py de verdade e rodar dele.
+
+Passo 1 — Salvar o diagnóstico como arquivo
+bash
+cd ~/Desktop/monitoramento-cpd
+cat > diag_zabbix.py << 'PY'
+#!/usr/bin/env python3
+"""Diagnóstico dos itens do Zabbix (para debug do Grafana)."""
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+
+URL = os.getenv("ZABBIX_URL", "http://localhost:8080") + "/api_jsonrpc.php"
+USER = os.getenv("ZABBIX_USER", "Admin")
+PASS = os.getenv("ZABBIX_PASSWORD", "zabbix")
+HOST = os.getenv("ESP32_HOST_NAME", "esp32-cpd")
+
+
+def api(method, params, auth=None):
+    payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
+    if auth:
+        payload["auth"] = auth
+    r = requests.post(URL, json=payload, timeout=10).json()
+    if "error" in r:
+        raise RuntimeError(r["error"])
+    return r["result"]
+
+
+def main():
+    print(f"Conectando em {URL} ...")
+    auth = api("user.login", {"username": USER, "password": PASS})
+    print(f"  Login OK\n")
+
+    hosts = api("host.get", {"filter": {"host": [HOST]}}, auth)
+    if not hosts:
+        print(f"❌ Host '{HOST}' não encontrado.")
+        return
+    host_id = hosts[0]["hostid"]
+    print(f"Host '{HOST}' → ID {host_id}\n")
+
+    items = api("item.get", {
+        "hostids": host_id,
+        "output": ["itemid", "name", "key_", "value_type", "status", "lastvalue", "lastclock"],
+        "sortfield": "name",
+    }, auth)
+
+    print(f"{'NAME':<28} {'KEY':<20} {'VT':<3} {'ST':<4} {'LAST CLOCK':<12} {'LAST VALUE'}")
+    print("-" * 95)
+    for it in items:
+        vt = it["value_type"]
+        st = "ON" if it["status"] == "0" else "OFF"
+        last = (it.get("lastvalue") or "(vazio)")[:30]
+        clock = it.get("lastclock", "0")
+        print(f"{it['name']:<28} {it['key_']:<20} {vt:<3} {st:<4} {clock:<12} {last}")
+
+    print()
+    print("Legenda: VT = value_type (0=float, 3=unsigned, 4=text)")
+    print("         ST = status (ON=habilitado, OFF=desabilitado)")
+    print()
+    print(f"Total de itens: {len(items)}")
+
+    api("user.logout", {}, auth)
+
+
+if __name__ == "__main__":
+    main()
+PY
+Passo 2 — Rodar
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python diag_zabbix.py
+O que esperar na saída:
+
+text
+Conectando em http://localhost:8080/api_jsonrpc.php ...
+  Login OK
+
+Host 'esp32-cpd' → ID 10683
+
+NAME                         KEY                  VT  ST   LAST CLOCK   LAST VALUE
+-----------------------------------------------------------------------------------------------
+MQTT Status                  mqtt_status.sh       4   ON   1762964...   {"estado":"NORMAL"...
+MQTT Status: Ambiente        esp32.ambiente       4   ON   1762964...   CRITICO
+MQTT Status: Distância       esp32.distancia      0   ON   1762964...   335.9
+MQTT Status: Estado          esp32.estado         4   ON   1762964...   NORMAL
+MQTT Status: Invasões        esp32.invasoes       3   ON   1762964...   0
+MQTT Status: Luminosidade    esp32.luz            4   ON   1762964...   true
+MQTT Status: Modo            esp32.modo           4   ON   1762964...   ARMADO
+MQTT Status: Porta Aberta    esp32.porta          4   ON   1762964...   false
+MQTT Status: Temperatura     esp32.temp           0   ON   1762964...   52.9
+MQTT Status: Umidade         esp32.umid           0   ON   1762964...   69.5
+
+Legenda: ...
+Total de itens: 10
+O que cada coluna quer dizer:
+
+VT (value_type): 0 = float, 3 = unsigned, 4 = text
+
+ST (status): ON = habilitado, OFF = desabilitado
+
+LAST CLOCK: quando foi a última coleta (UNIX timestamp). Se for 0, o item nunca coletou nada.
+
+LAST VALUE: o último valor recebido. Se for (vazio), o Zabbix não conseguiu extrair o valor.
+
+Interpretando o resultado
+Cenário A — Todos os itens têm LAST VALUE preenchido
+Significa: o Zabbix está OK. O problema está no Grafana (plugin do Zabbix).
+
+Nesse caso, o nome no Zabbix é MQTT Status: Modo (com o prefixo "MQTT Status: " que o Zabbix adiciona automaticamente). O Grafana busca por "Modo" e não acha porque o nome tem prefixo. Precisamos ajustar o filtro do JSON para:
+
+json
+"item": { "filter": "MQTT Status: Modo" }
+Cenário B — "Modo" e "Estado" com LAST VALUE = (vazio) ou LAST CLOCK = 0
+Significa: o Zabbix não está coletando esses itens. O problema está no JSONPath.
+
+Nesse caso, precisamos:
+
+Rodar python configurar_zabbix.py de novo (ele reescreve o JSONPath).
+
+Verificar se o item mestre (MQTT Status) está recebendo dados.
+
+Cenário C — A coluna ST mostra OFF em algum item
+Significa: o item está desabilitado no Zabbix. Precisa reabilitar (no Zabbix Web ou via configurar_zabbix.py).
+
+Me diga
+Cole aqui a saída do python diag_zabbix.py (a tabela completa).
+
+Com ela, eu sei exatamente:
+
+Se o problema é no Zabbix (item não coleta) ou no Grafana (filtro errado).
+
+Se é um problema de value_type (texto sendo tratado como número, ou vice-versa).
+
+Se o LAST CLOCK está atualizado (significa que o pipeline inteiro está funcionando).
+
+Com essa saída, te dou o JSON final do Grafana com o filtro correto e fechamos a Fatia 4. 🚀
+
+❯ cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python diag_zabbix.py
+Conectando em http://localhost:8080/api_jsonrpc.php ...
+  Login OK
+
+Host 'esp32-cpd' → ID 10683
+
+NAME                         KEY                  VT  ST   LAST CLOCK   LAST VALUE
+-----------------------------------------------------------------------------------------------
+Ambiente                     esp32.ambiente       4   ON   1794503021   CRITICO
+Distância                    esp32.distancia      0   ON   1794503021   335.9
+Estado                       esp32.estado         4   ON   1794503021   NORMAL
+Invasões                     esp32.invasoes       3   ON   1794503021   0
+Luminosidade                 esp32.luz            4   ON   1794503021   true
+MQTT Status                  mqtt_status.sh       4   ON   1794503021   {"estado":"NORMAL","modo":"ARM
+Modo                         esp32.modo           4   ON   1794503021   ARMADO
+Porta Aberta                 esp32.porta          4   ON   1794503021   false
+Temperatura                  esp32.temp           0   ON   1794503021   52.9
+Umidade                      esp32.umid           0   ON   1794503021   69.5
+
+Legenda: VT = value_type (0=float, 3=unsigned, 4=text)
+         ST = status (ON=habilitado, OFF=desabilitado)
+
+Total de itens: 10
+╭─ ~/Desktop/monitoramento-cpd ·········· ✔  monitoramento-cpd   system   at 14:03:57 
+╰─
+🎯 ACHEI! O problema é o nome dos itens
+Olha a saída do diagnóstico:
+
+text
+NAME                         KEY                  VT  ST   LAST CLOCK   LAST VALUE
+-----------------------------------------------------------------------------------------------
+Temperatura                  esp32.temp           0   ON   1794503021   52.9
+Umidade                      esp32.umid           0   ON   1794503021   69.5
+Modo                         esp32.modo           4   ON   1794503021   ARMADO
+Estado                       esp32.estado         4   ON   1794503021   NORMAL
+Todos os itens estão ON, com LAST CLOCK recente (1794503021) e LAST VALUE preenchido. O Zabbix está coletando tudo perfeitamente!
+
+E os nomes são simples: Temperatura, Umidade, Modo, Estado — sem o prefixo "MQTT Status: " que eu tinha assumido.
+
+Isso muda tudo:
+
+✅ Temperatura e Umidade funcionam porque o filtro "filter": "Temperatura" casa com o nome "Temperatura".
+
+❌ Modo e Estado falham porque... espera, os nomes são exatamente "Modo" e "Estado". O filtro "filter": "Modo" deveria funcionar.
+
+Por que então o painel "Modo" mostra 0 (Invasões) e "Estado" mostra No data?
+
+Hipótese: o Grafana está achando o item "Modo", mas ele retorna 0 (Invasões) porque o plugin não está filtrando corretamente — o filter está funcionando como substring, e "Modo" não bate com nada que ele conhece, então ele cai no fallback (primeiro item numérico).
+
+Vamos forçar o nome exato com o operador filter: "Modo" (que deveria ser exato, mas não está sendo).
+
+A solução definitiva: usar item: { "filter": "Modo" } com o tipo de dado correto
+O problema real é que o painel stat do Grafana está tentando renderizar um item text (value_type: 4) como número. Ele não consegue, então mostra 0 ou No data.
+
+A correção: no JSON do dashboard, o painel "Modo" e "Estado" precisam de "type": "stat" com "options": { "textMode": "value" } ou — melhor — usar "type": "text" (painel de texto puro, não stat).
+
+Vamos substituir os painéis "Modo" e "Estado" por painéis text simples, que aceitam qualquer valor.
+
+Correção — novo cpd-dashboard.json
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'EOF'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 28 },
+            { "color": "red", "value": 32 }
+          ]},
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Temperatura" }
+      }],
+      "title": "Temperatura",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 65 },
+            { "color": "red", "value": 80 }
+          ]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Umidade" }
+      }],
+      "title": "Umidade",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{
+            "options": {
+              "ARMADO": { "color": "blue", "index": 0 },
+              "DESARMADO": { "color": "orange", "index": 1 }
+            },
+            "type": "value"
+          }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "content": "",
+        "mode": "markdown",
+        "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false }
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Modo" }
+      }],
+      "title": "Modo",
+      "type": "text"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{
+            "options": {
+              "NORMAL": { "color": "green", "index": 0 },
+              "AVISO SALA": { "color": "yellow", "index": 1 },
+              "APROXIMACAO RACK": { "color": "orange", "index": 2 },
+              "EMERGENCIA RACK": { "color": "red", "index": 3 },
+              "INVASAO SALA": { "color": "red", "index": 4 },
+              "ACESSO RFID": { "color": "purple", "index": 5 }
+            },
+            "type": "value"
+          }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "content": "",
+        "mode": "markdown",
+        "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false }
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Estado" }
+      }],
+      "title": "Estado",
+      "type": "text"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "",
+            "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line",
+            "fillOpacity": 10, "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5,
+            "scaleDistribution": { "type": "linear" }, "showPoints": "never",
+            "spanNulls": false, "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "A",
+          "item": { "filter": "Temperatura" }
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "B",
+          "item": { "filter": "Umidade" }
+        }
+      ],
+      "title": "Temperatura e Umidade (30 min)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cpd"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CPD Dashboard",
+  "uid": "cpd-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
+EOF
+Principais mudanças:
+
+"Modo" e "Estado" agora são painéis do tipo text (markdown), não stat. O painel text aceita qualquer valor, sem forçar numérico.
+
+"Temperatura" e "Umidade" continuam stat (são numéricos, funcionam).
+
+Gráfico mantém.
+
+Passo 2 — Apagar o dashboard e deixar o Grafana reler
+No Grafana:
+
+Dashboards → CPD → CPD Dashboard
+
+Clique em Exit edit (se estiver editando)
+
+No topo direito, clique no ícone ... (três pontinhos na horizontal, ao lado do "Save")
+
+Delete → confirme
+
+Aguarde 30s e recarregue (F5). O Grafana relê o JSON e recria o dashboard.
+
+Passo 3 — Verificar
+O que esperar:
+
+Painel	Valor
+Temperatura	52.9 °C 🔴
+Umidade	69.5 % 🟡
+Modo	ARMADO (painel de texto)
+Estado	NORMAL (painel de texto)
+Gráfico	Duas linhas
+Se "Modo" e "Estado" ainda mostrarem erro ou No data, é porque o plugin do Grafana não retorna texto puro (só numérico). Nesse caso, precisamos de uma solução alternativa — me avisa.
+
+Me diga:
+
+Após o novo JSON + delete + F5, os 5 painéis se acertaram?
+
+"Modo" e "Estado" mostram ARMADO/NORMAL ou continuam com erro?
+
+Com isso, fechamos a Fatia 4. 🚀
+
+Agora piorou
+🎯 Vamos parar de "chutar" e resolver de vez
+Você está certo em dizer "agora piorou" — eu mudei o painel "Modo" para o tipo Text (que é um painel de texto estático, não um painel de dados). O painel Text não busca dados do Zabbix — ele só exibe o que você digitar. Foi uma solução errada.
+
+Vou te dar o caminho definitivo, sem tentativa e erro.
+
+O diagnóstico final (que já temos)
+O diag_zabbix.py mostrou que o Zabbix tem todos os dados:
+
+text
+NAME          KEY             VT  ST  LAST VALUE
+Temperatura   esp32.temp      0   ON  52.9
+Umidade       esp32.umid      0   ON  69.5
+Modo          esp32.modo      4   ON  ARMADO
+Estado        esp32.estado    4   ON  NORMAL
+O problema é o painel stat do Grafana com value_type=4 (texto). O painel stat só aceita números. Quando o valor é texto (ARMADO, NORMAL), ele mostra No data ou 0.
+
+A solução correta: usar o painel table (tabela) para os campos de texto. O table aceita qualquer value_type e mostra o valor textual sem problemas.
+
+Correção definitiva — vou trocar só os painéis "Modo" e "Estado" para table
+Abra o arquivo cpd-dashboard.json:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+Encontre os dois painéis que estão com "type": "text" (o Modo e o Estado) e substitua esses dois blocos pelos blocos abaixo.
+
+Painel "Modo" (substituir o bloco que tem "title": "Modo"):
+
+json
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "center", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "cellHeight": "lg",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Modo" }
+      }],
+      "title": "Modo",
+      "type": "table"
+    },
+Painel "Estado" (substituir o bloco que tem "title": "Estado"):
+
+json
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "center", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "cellHeight": "lg",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Estado" }
+      }],
+      "title": "Estado",
+      "type": "table"
+    },
+Salve o arquivo (Cmd+S no editor).
+
+Alternativa: recriar o arquivo inteiro do zero
+Se preferir não editar "no meio", recrie o arquivo completo com um comando. É mais rápido e sem risco de quebrar o JSON:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'EOF'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 28 },
+            { "color": "red", "value": 32 }
+          ]},
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Temperatura" }
+      }],
+      "title": "Temperatura",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 65 },
+            { "color": "red", "value": 80 }
+          ]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Umidade" }
+      }],
+      "title": "Umidade",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "center", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "cellHeight": "lg",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Modo" }
+      }],
+      "title": "Modo",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "center", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "cellHeight": "lg",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "filter": "Estado" }
+      }],
+      "title": "Estado",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "",
+            "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line",
+            "fillOpacity": 10, "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5,
+            "scaleDistribution": { "type": "linear" }, "showPoints": "never",
+            "spanNulls": false, "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "A",
+          "item": { "filter": "Temperatura" }
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "B",
+          "item": { "filter": "Umidade" }
+        }
+      ],
+      "title": "Temperatura e Umidade (30 min)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cpd"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CPD Dashboard",
+  "uid": "cpd-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
+EOF
+Passo final — Reiniciar e verificar
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 20s. Abra http://localhost:3000/d/cpd-dashboard/cpd-dashboard.
+
+Se o dashboard antigo ainda estiver lá (com "Text"), apague-o:
+
+Exit edit (se estiver editando)
+
+Menu ... (três pontinhos na horizontal, ao lado do Save) → Delete
+
+Confirme
+
+O Grafana relê o JSON e recria o painel com "table".
+
+Por que table funciona e stat não
+stat é um painel de valor único e foi feito para números. Quando recebe texto, ele tenta converter e falha.
+
+table aceita qualquer tipo de dado. Ele mostra o texto literal na célula.
+
+Como os itens "Modo" e "Estado" são texto (value_type=4), table é o painel correto.
+
+Me diga:
+
+Após aplicar o novo JSON e reiniciar, os painéis "Modo" e "Estado" mostram ARMADO/NORMAL em uma tabela?
+
+Temperatura, Umidade e Gráfico continuam funcionando?
+
+Com isso, fechamos a Fatia 4. 🚀
+

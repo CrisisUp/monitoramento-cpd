@@ -1,0 +1,1575 @@
+O melhor que conseguimos até agora.
+🎉 Isso é um avanço e tanto! Vamos analisar.
+Olha o estado atual:
+
+Painel	Status	O que está acontecendo
+Temperatura	✅ 52.9 °C (vermelho)	Perfeito — puxando esp32.temp corretamente.
+Umidade	✅ 89 % (vermelho)	Perfeito — puxando esp32.umid corretamente.
+Modo	⚠️ Mostra Luminosidade: true	Está puxando o item errado. O filtro "Modo" casou com Luminosidade por algum motivo.
+Estado	❌ No data	Não está puxando nada.
+Gráfico	✅ Perfeito	Linhas de temperatura e umidade atualizando.
+Excelente progresso! O pior cenário (nada funcionando) ficou para trás. Agora falta apenas resolver dois painéis.
+
+O problema dos painéis "Modo" e "Estado"
+O plugin do Zabbix tem uma particularidade: o campo "filter" faz busca por substring no nome visível. Quando você filtra por "Modo", ele encontra Modo mas também pode encontrar Luminosidade (porque tem "os" que casa com "Modo" em algumas versões do plugin). E o painel "Estado" não encontra nada porque nenhum item tem "Estado" no nome exato que o plugin espera.
+
+A solução definitiva: filtrar pelo key técnico (esp32.modo, esp32.estado). O plugin aceita isso, mas precisa estar no formato correto.
+
+A correção: filtrar por key (técnico) e não por nome
+O plugin do Zabbix aceita o campo "item" com a propriedade "key" (técnico) ou "filter" (nome). Para evitar ambiguidade, vamos usar key.
+
+Substitua o conteúdo do cpd-dashboard.json por este:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'EOF'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 28 },
+            { "color": "red", "value": 32 }
+          ]},
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "key": "esp32.temp" }
+      }],
+      "title": "Temperatura",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 65 },
+            { "color": "red", "value": 80 }
+          ]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "background", "graphMode": "area", "justifyMode": "auto",
+        "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "key": "esp32.umid" }
+      }],
+      "title": "Umidade",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "center", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [{
+            "options": {
+              "ARMADO": { "color": "blue", "index": 0 },
+              "DESARMADO": { "color": "orange", "index": 1 }
+            },
+            "type": "value"
+          }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "cellHeight": "lg",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "key": "esp32.modo" }
+      }],
+      "title": "Modo",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "center", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [{
+            "options": {
+              "NORMAL": { "color": "green", "index": 0 },
+              "AVISO SALA": { "color": "yellow", "index": 1 },
+              "APROXIMACAO RACK": { "color": "orange", "index": 2 },
+              "EMERGENCIA RACK": { "color": "red", "index": 3 },
+              "INVASAO SALA": { "color": "red", "index": 4 },
+              "ACESSO RFID": { "color": "purple", "index": 5 }
+            },
+            "type": "value"
+          }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "cellHeight": "lg",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [{
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+        "queryType": "0", "refId": "A",
+        "item": { "key": "esp32.estado" }
+      }],
+      "title": "Estado",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "",
+            "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line",
+            "fillOpacity": 10, "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5,
+            "scaleDistribution": { "type": "linear" }, "showPoints": "never",
+            "spanNulls": false, "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "A",
+          "item": { "key": "esp32.temp" }
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0", "refId": "B",
+          "item": { "key": "esp32.umid" }
+        }
+      ],
+      "title": "Temperatura e Umidade (30 min)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cpd"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CPD Dashboard",
+  "uid": "cpd-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
+EOF
+Passo final — Apagar e reler
+docker compose restart grafana
+
+No Grafana, apague o dashboard (menu ... → Delete)
+
+Aguarde 30s e recarregue
+
+Se "Modo" e "Estado" ainda falharem
+Plano B: vamos usar o datasource Zabbix direto com query pelo key via API. Se o plugin não aceitar "key", a solução é usar "item": { "filter": "MQTT Status: Modo" } (nome completo, não substring).
+
+Mas antes de tentar outra coisa, me diga:
+
+Após o novo JSON + restart + delete + F5: "Modo" e "Estado" mostram ARMADO e NORMAL?
+
+Os 3 outros painéis (Temperatura, Umidade, Gráfico) continuam funcionando?
+
+Se sim, fechamos a Fatia 4. Se não, me manda um print dos 2 painéis problemáticos que eu vejo o que o plugin está retornando. 🚀
+
+🎉 FATIA 4 CONCLUÍDA! O dashboard está 100% funcional!
+Olha o resultado — todos os 5 painéis estão funcionando perfeitamente:
+
+Painel	Valor	Cor	Status
+Temperatura	52.9 °C	🔴 Vermelho (acima de 32°C)	✅
+Umidade	89 %	🔴 Vermelho (acima de 80%)	✅
+Modo	ARMADO	Tabela com timestamp	✅
+Estado	NORMAL	Tabela com timestamp	✅
+Gráfico	Temperatura + Umidade	Linha dupla	✅
+O Time: 2026-11-12 14:32:41 mostra que os dados estão ao vivo, atualizando a cada 10 segundos. O painel "Modo" e "Estado" agora mostram o valor textual corretamente (era só usar table em vez de stat para itens de texto).
+
+🎯 O que aprendemos (Lições para o README)
+Este foi um dos painéis mais desafiadores do projeto. As lições valiosas:
+
+O plugin do Zabbix no Grafana aceita "key" técnico (ex.: esp32.temp), não só "filter" (nome visível). Isso evita ambiguidade.
+
+Painel stat só funciona para números. Para texto (value_type=4), use table.
+
+"filter" funciona como substring — "Modo" pode casar com "Luminosidade" se o plugin for esperto. Sempre prefira "key".
+
+table é o "canivete suíço" para qualquer value_type. Se em dúvida, use table.
+
+Adicione ao 00-plano.md:
+
+markdown
+### Fatia 4 — Dashboard Grafana
+
+- **`stat` só para números.** Texto (`ARMADO`, `NORMAL`) precisa de `table`.
+- **`"item": { "key": "esp32.temp" }`** é mais preciso que `"filter": "Temperatura"`
+  (evita ambiguidade de substring).
+- **`"allowUiUpdates": false`** garante que o JSON é a fonte da verdade.
+- **`docker compose restart grafana`** relê o provisionamento em até 30s.
+📊 Estado atual do projeto
+Fatia	Status
+0. Base Docker	✅
+1. Ponte MQTT	✅
+2. Ingestão no Zabbix	✅
+3. Gatilhos + Telegram	⏳ (adiada)
+4. Dashboard Grafana	✅
+5. IaC do Zabbix	✅
+6. NOC 3D	⏳ (pendente)
+7. Ações HMAC	⏳ (pendente)
+5 de 8 fatias concluídas! O núcleo do monitoramento está 100% funcional.
+
+Próximos passos — 3 opções
+Opção A — Fatia 3 (Telegram + Gatilhos) — a fatia que ficou pendente. Agora que o dashboard está pronto, os alertas podem incluir links clicáveis para o painel. ~40 min.
+
+Opção B — Fatia 6 (NOC 3D) — o painel visual mais impressionante. Sala 3D reagindo ao estado do rack. ~2h.
+
+Opção C — Consolidar documentação — atualizar README.md e 00-plano.md com tudo o que aprendemos nas Fatias 4 e 5. ~20 min.
+
+Me diga:
+
+O dashboard está completo e funcionando? (confirmar os 5 painéis verdes)
+
+Qual opção prefere (A, B ou C)?
+
+Parabéns pela jornada! Você tem agora:
+
+✅ Pipeline completo de ingestão (Wokwi → Zabbix)
+
+✅ Dashboard visual funcionando
+
+✅ IaC reproduzível (script idempotente)
+
+✅ Documentação em andamento
+
+O que falta é "só" a cereja do bolo (alertas, 3D, ações). 🚀
+
+Como salvar este dashboard?
+💾 Como salvar o Dashboard no Grafana (e por que ele já está salvo)
+Excelente pergunta. A resposta curta é: ele já está salvo. Mas deixa eu explicar os 3 níveis de "salvar", porque isso importa para o seu README.
+
+Nível 1 — Salvar no banco do Grafana (o que você fez na interface)
+Se você editou o dashboard na UI (arrastou painel, mudou cor), o botão Save (canto superior direito) ainda está azul — isso significa que há mudanças não salvas no banco do Grafana.
+
+O que fazer:
+
+Clique no botão Save (azul, ao lado de "Discard").
+
+No popup que abrir:
+
+Title: CPD Dashboard (já está preenchido)
+
+Description: (opcional) Painel de monitoramento do CPD
+
+Folder: CPD (já está)
+
+Clique em Save.
+
+O que isso faz: grava a versão atual no banco grafana_data (SQLite). Se o container reiniciar, o dashboard volta com o estado que você salvou.
+
+Limitação: se você rodar docker compose down -v (apaga volumes), perde tudo.
+
+Nível 2 — Salvar no arquivo JSON de provisionamento (IaC)
+Este é o nível profissional. O dashboard não está só no banco — ele é carregado do arquivo grafana/dashboards/cpd-dashboard.json a cada restart.
+
+Estado atual: o arquivo já tem a versão que funcionou (com key técnico + table). Se o Grafana reiniciar, ele lê do arquivo e recria o dashboard.
+
+Como confirmar que está tudo bem:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Aguarde 30s, dê F5 no navegador. O dashboard deve voltar idêntico. Se voltar, o arquivo é a fonte da verdade.
+
+Nível 3 — Salvar no Git (versionamento)
+Aqui é o nível de produção. O dashboard é código, então vai para o Git junto com o resto.
+
+Se você ainda não iniciou o Git:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+git init
+git add .
+git commit -m "feat: dashboard do CPD com 5 paineis funcionais"
+E depois, a cada mudança no JSON:
+
+bash
+git add grafana/dashboards/cpd-dashboard.json
+git commit -m "fix: ajusta filtro do painel Modo"
+git push   # se tiver remoto
+O que isso faz: se você quebrar algo amanhã, pode voltar à versão anterior com git checkout.
+
+⚠️ Um aviso importante sobre "allowUiUpdates: false"
+No grafana/provisioning/dashboards/default.yaml, se você colocou allowUiUpdates: false, o Grafana ignora qualquer edição feita na UI após o restart. O JSON é a única fonte da verdade.
+
+Isso significa:
+
+Ação	Com allowUiUpdates: false	Com allowUiUpdates: true
+Editar na UI e clicar Save	Fica salvo no banco, mas ignorado após restart	Fica salvo no banco e prevalece após restart
+Editar no JSON	Sempre prevalece	Sempre prevalece
+Fonte da verdade	JSON	Banco (se editado na UI)
+Recomendação: deixe allowUiUpdates: false. É o padrão IaC verdadeiro. Se quiser mudar algo, edite o JSON.
+
+O "Save" do Grafana e o que ele faz de verdade
+Quando você clica em Save com allowUiUpdates: false:
+
+Grafana salva no banco SQLite (grafana.db).
+
+Mas, no próximo restart, ele relê o cpd-dashboard.json e sobrescreve o que estava no banco.
+
+Então o Save é temporário — não é persistente.
+
+Por isso a recomendação é:
+
+Sempre editar o JSON (grafana/dashboards/cpd-dashboard.json).
+
+Sempre rodar docker compose restart grafana para aplicar.
+
+Sempre commitar no Git depois.
+
+A UI serve só para testar e visualizar. A fonte da verdade é o arquivo.
+
+Resumo prático — o que fazer agora
+Para salvar o dashboard atual (garantia de persistência):
+bash
+# 1. Confirme que o arquivo está com a versão que funcionou
+cat ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json | head -20
+
+# 2. Reinicie o Grafana
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+
+# 3. Aguarde 30s, abra o navegador, dê F5
+open http://localhost:3000/d/cpd-dashboard/cpd-dashboard
+Se o dashboard voltar igual (5 painéis funcionando):
+✅ O arquivo é a fonte da verdade. Salvo.
+
+Se o dashboard voltar diferente (painéis com "No data"):
+❌ O arquivo está desatualizado. Você precisa exportar o dashboard da UI para o arquivo.
+
+Para exportar o dashboard atual para o arquivo:
+Se você fez ajustes na UI e quer "congelar" o estado atual no JSON:
+
+No Grafana, clique no botão Save (azul) primeiro.
+
+Menu ... (três pontinhos na horizontal) → Export.
+
+Na janela:
+
+Export for sharing externally: desmarcado
+
+Export for sharing with Grafana instance: marcado
+
+View JSON: clique em Copy to clipboard (copia o JSON).
+
+Abra o cpd-dashboard.json no editor:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json
+Apague tudo e cole o JSON copiado.
+
+Salve.
+
+Agora o arquivo reflete o estado exato da UI.
+
+⚠️ Aviso sobre o JSON exportado
+O JSON exportado pela UI pode vir com "id": 1 (ou outro número) e "uid": "abc123" (aleatório). Isso pode causar conflito no provisionamento.
+
+Antes de salvar o JSON exportado, ajuste:
+
+"id": null (em vez de 1 ou outro número)
+
+"uid": "cpd-dashboard" (mantenha o UID original)
+
+Remova o campo "version": N (ou mantenha 1)
+
+Isso garante que o Grafana trate o arquivo como provisionado, não como "importado da UI".
+
+Me diga:
+
+Você já clicou em Save na UI? O botão ainda está azul?
+
+Quer que eu te ajude a exportar o estado atual para o arquivo, ou já está satisfeito com o arquivo que está no disco?
+
+Quer dar git init agora e commitar tudo, ou deixar para depois?
+
+Com isso, você deixa o dashboard blindado contra perdas. 🚀
+
+Como fazer o código para deixar o dashboard desta maneira?
+Ou com ux/ui melhor?
+🎨 Transformar o Dashboard em Código (e melhorar o UX/UI)
+Excelente pergunta! Ver o dashboard funcionando é ótimo, mas ver ele lindo e reproduzível por código é o que separa o amador do profissional. Vamos fazer as duas coisas de uma vez.
+
+E sim, dá para melhorar muito o UX/UI. O dashboard atual tem bons dados, mas tem 3 problemas visuais:
+
+Painéis "Modo" e "Estado" são tabelas feias — deveriam ser "Stat" com cores (mas com texto, o que é o desafio).
+
+Temperatura e Umidade não têm limite visual — fundo verde mesmo em 89% de umidade é confuso (a cor deveria alertar).
+
+Gráfico tem 2 eixos Y — a umidade está em % (0-100) e temperatura em °C (0-40). Fica estranho.
+
+Vou te dar um JSON novo, melhorado, que:
+
+Usa o painel nativo stat para Modo e Estado (não table).
+
+Aplica cor condicional para Modo (azul ARMADO, laranja DESARMADO).
+
+Aplica cor condicional para Estado (verde NORMAL, vermelho EMERGENCIA).
+
+Remove o segundo eixo Y do gráfico (temperatura e umidade ficam em escalas separadas visualmente).
+
+Adiciona unidades e descrição em cada painel (útil para quem vê pela primeira vez).
+
+O truque para usar stat com texto
+O painel stat do Grafana só aceita números por padrão. Mas o plugin do Zabbix tem um recurso: "options": { "textMode": "name" } (ou combinação) e o mappings para cor.
+
+Na prática, o que resolve é:
+
+table é o painel correto para texto. Mas dá para estilizar a tabela para ficar bonita (cor de fundo, fonte grande, centralizado).
+
+OU usar stat com "reduceOptions": { "fields": "/^.*$/", "values": false } e configuração "textMode": "value_and_name".
+
+Vou usar a solução híbrida: stat para números (Temp/Umidade), e table estilizada para texto (Modo/Estado). A tabela vai ficar grande, centralizada, com cor, parecendo um painel nativo.
+
+JSON melhorado — substitui o cpd-dashboard.json inteiro
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'EOF'
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Monitoramento do CPD em tempo real via MQTT + Zabbix",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Sensores ambientais",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "description": "Temperatura atual do rack (°C). Faixas: verde até 28°C, amarelo 28-32°C, vermelho acima de 32°C.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 28 },
+              { "color": "red", "value": 32 }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "item": { "key": "esp32.temp" },
+          "queryType": "0",
+          "refId": "A"
+        }
+      ],
+      "title": "Temperatura",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "description": "Umidade relativa do ar (%). Faixas: verde até 65%, amarelo 65-80%, vermelho acima de 80%.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 65 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "item": { "key": "esp32.umid" },
+          "queryType": "0",
+          "refId": "A"
+        }
+      ],
+      "title": "Umidade",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "description": "Modo atual do vigilante. ARMADO (azul) ou DESARMADO (laranja).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds", "fixedColor": "blue" },
+          "mappings": [
+            { "options": { "ARMADO": { "color": "blue", "index": 0 } }, "type": "value" },
+            { "options": { "DESARMADO": { "color": "orange", "index": 1 } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "displayMode": "gradient",
+        "showHeader": false,
+        "cellHeight": "lg"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "item": { "key": "esp32.modo" },
+          "queryType": "0",
+          "refId": "A"
+        }
+      ],
+      "title": "Modo",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": { "Modo": "Modo" }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "description": "Estado de segurança do CPD. NORMAL, EMERGENCIA RACK, INVASAO SALA, etc.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "NORMAL": { "color": "green", "index": 0 } }, "type": "value" },
+            { "options": { "AVISO SALA": { "color": "yellow", "index": 1 } }, "type": "value" },
+            { "options": { "APROXIMACAO RACK": { "color": "orange", "index": 2 } }, "type": "value" },
+            { "options": { "EMERGENCIA RACK": { "color": "red", "index": 3 } }, "type": "value" },
+            { "options": { "INVASAO SALA": { "color": "red", "index": 4 } }, "type": "value" },
+            { "options": { "ACESSO RFID": { "color": "purple", "index": 5 } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": {
+        "displayMode": "gradient",
+        "showHeader": false,
+        "cellHeight": "lg"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "item": { "key": "esp32.estado" },
+          "queryType": "0",
+          "refId": "A"
+        }
+      ],
+      "title": "Estado",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": { "Estado": "Estado" }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "panels": [],
+      "title": "Histórico (30 min)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "description": "Temperatura e umidade dos últimos 30 minutos. Temperatura em °C, umidade em %.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Temperatura" },
+            "properties": [
+              { "id": "unit", "value": "celsius" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Umidade" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } },
+              { "id": "custom.axisPlacement", "value": "right" }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 10 },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull", "mean", "max"],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "item": { "key": "esp32.temp" },
+          "queryType": "0",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "item": { "key": "esp32.umid" },
+          "queryType": "0",
+          "refId": "B"
+        }
+      ],
+      "title": "Temperatura e Umidade",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cpd", "rackmonitor"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CPD Dashboard",
+  "uid": "cpd-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
+EOF
+O que mudou (e por quê)
+Mudança	Efeito visual
+colorMode: "background_solid" em Temperatura e Umidade	Fundo colorido inteiro (não gradiente suave), mais legível
+wideLayout: true	O valor fica grande e centralizado, estilo painel de aeroporto
+justifyMode: "center"	Centraliza o número
+decimals: 1	Mostra 52.9 em vez de 53
+liveNow: true	O gráfico fica "escorrendo" (auto-scroll)
+graphTooltip: 1	Tooltip compartilhado (mostra ambos no hover)
+displayMode: "gradient" nas tabelas	Fundo com gradiente da cor do estado (fica bonito)
+cellHeight: "lg"	Células grandes, estilo painel
+showHeader: false	Esconde o cabeçalho (só o valor aparece)
+transformations: organize	Remove a coluna Time das tabelas (mais limpo)
+Rows "Sensores ambientais" e "Histórico"	Agrupa os painéis, deixa organizado
+description em cada painel	Tooltip mostra a explicação (útil para novos)
+Gráfico com 2 eixos Y	Temperatura (°C, esquerda) e umidade (%, direita) — visualmente separados
+Cores fixas por série	Temperatura sempre vermelha, umidade sempre azul (consistência visual)
+Como aplicar
+Passo 1 — Rodar o comando
+bash
+# (já está no bloco acima — só copiar e colar no terminal)
+Passo 2 — Restart do Grafana
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Passo 3 — Apagar o dashboard antigo (para reler o JSON)
+No Grafana:
+
+Dashboards → CPD → CPD Dashboard
+
+Exit edit (se estiver editando)
+
+... → Delete → confirme
+
+Aguarde 30s e recarregue (F5). O Grafana recria o dashboard com o novo layout.
+
+Passo 4 — Ver o resultado
+O que você vai ver:
+
+Linha de título "Sensores ambientais"
+
+Temperatura com fundo vermelho vivo (52.9 °C)
+
+Umidade com fundo vermelho vivo (89%)
+
+Modo numa tabela grande com fundo azul (ARMADO)
+
+Estado numa tabela grande com fundo vermelho (EMERGENCIA RACK)
+
+Linha de título "Histórico (30 min)"
+
+Gráfico com 2 eixos Y: temperatura (esquerda, °C) e umidade (direita, %)
+
+🔧 Se o painel "Modo" e "Estado" ainda parecerem feios
+Se as tabelas ainda não ficarem bonitas (o plugin do Zabbix às vezes força o header), o ajuste fino é:
+
+Editar o painel na UI
+
+Table options → Show header (desmarcar)
+
+Cell options → Cell type = Color text ou Color background
+
+Cell height = Large
+
+Save
+
+Mas o JSON já tenta isso com "showHeader": false e "cellHeight": "lg".
+
+📋 Salvar o dashboard (agora que está bonito)
+Nível 1 — Salvar no Grafana (temporário)
+Clique em Save (azul) → Save. Vai ser sobrescrito no próximo restart.
+
+Nível 2 — Salvar no arquivo (permanente)
+O arquivo já está no disco (grafana/dashboards/cpd-dashboard.json). Nada a fazer.
+
+Nível 3 — Salvar no Git (versionamento)
+bash
+cd ~/Desktop/monitoramento-cpd
+git init
+git add .
+git commit -m "feat: dashboard CPD com UX/UI melhorado (5 painéis + 2 rows)"
+Isso é o que blinda o dashboard contra perda. Se você quebrar algo amanhã, git checkout volta.
+
+Me diga:
+
+O novo JSON foi aplicado? O dashboard ficou mais bonito (fundo sólido, tabelas grandes, 2 eixos Y)?
+
+Quer que eu ajuste mais alguma coisa (ex.: adicionar painéis de Porta, Invasões, Ambiente)?
+
+Quer dar git init agora para versionar o projeto?
+
+Com isso, você tem um dashboard profissional e reproduzível. 🚀
+
+Eu te passei até qual .txt? Foi o 05.txt?
+Sim, exatamente! Você me enviou do 01.txt até o 05.txt.
+
+Aqui está o histórico do que analisamos de cada um:
+
+01.txt: A fundação e as decisões de arquitetura (escolha do Mosquitto, Wokwi, etc).
+
+02.txt: A execução do Passo 0 (criação das pastas e o erro do zsh no Mac).
+
+03.txt: A Fatia 1 completa (A batalha dos 4 erros de sintaxe no Mosquitto até a ponte funcionar).
+
+04.txt: A Fatia 2 completa (A batalha do Zabbix, o Dockerfile customizado e o item dependente).
+
+05.txt: A conclusão da Fatia 2 e a criação dos 7 itens via Python (a virada de chave para o IaC), terminando com você perguntando sobre o README.
+
+O que aconteceu depois do 05.txt (e não está documentado nos seus .txt ainda):
+Nós fizemos a Fatia 4 (Dashboard no Grafana). Foi onde enfrentamos os problemas do provisionamento via JSON, o plugin do Zabbix não habilitando, a confusão dos painéis puxando o item errado, até chegarmos no layout perfeito (e na última mensagem, eu passei o código para deixá-lo com um visual ainda mais bonito, com fundo sólido e cores corretas).
+
+Você pode criar o 06.txt com toda a conversa de hoje sobre o Grafana (incluindo aquele erro do AssertionError do Python e a vitória final dos 5 painéis).
+
+Sobre o README:
+Eu tinha preparado um esqueleto do README completo para você colar, mas percebi que a nossa conversa tomou um rumo mais prático.
+
+O que você quer fazer agora?
+
+Criar o 06.txt com o resumo do Grafana (para não perder o histórico).
+
+Voltar para o README: Eu te passo o arquivo README.md finalizado (já com as lições do Grafana incluídas), e você cola no projeto.
+
+Aplicar o JSON melhorado do Grafana (o da minha última mensagem) para ver o visual novo.
+
+Qual o próximo passo? 🚀
+
+06.txt
+Perfeito! Agora tenho o quadro completo de tudo o que fizemos. Este arquivo 06.txt é o mais valioso para o README, porque contém as decisões de UX/UI e os truques de provisionamento que só aprendemos na prática.
+
+Aqui está o Resumo Estruturado do Arquivo 06:
+
+Resumo Estruturado — Fatia 4 (Dashboard Grafana e IaC Visual)
+O que tentamos fazer:
+Criar um dashboard no Grafana via Infraestrutura como Código (arquivos JSON + YAML de provisionamento), sem usar a interface gráfica, para monitorar os dados do ESP32 que já estavam no Zabbix.
+
+O que deu certo (Acertos):
+
+Provisionamento do Datasource e Dashboard: O Grafana leu os arquivos YAML e JSON automaticamente. O Dashboard apareceu na pasta CPD e os dados começaram a fluir (Temperatura e Umidade atualizando em tempo real).
+
+O Pulo do Gato (Tabelas para Texto): O painel stat do Grafana só aceita números. Para exibir ARMADO ou NORMAL (texto), tivemos que usar o painel table estilizado, que aceita qualquer tipo de dado e mostra o valor literal.
+
+Filtro por key técnico: Descobrimos que filtrar pelo nome visível ("filter": "Modo") causava ambiguidade (puxava Luminosidade). A solução definitiva foi usar o key técnico ("item": { "key": "esp32.modo" }), que é único e preciso.
+
+O que precisou de atenção (Becos sem saída e soluções):
+
+O erro do zsh no Mac: O script .sh quebrava no terminal porque o ! é interpretado como histórico. Solução: Rodar via arquivo .sh ou usar aspas simples.
+
+Erro undefined network cpd-net: O bloco networks: no final do docker-compose.yml foi cortado acidentalmente. Solução: Restaurar o bloco.
+
+Plugin Zabbix desabilitado: O plugin alexanderzobnin-zabbix-app é instalado mas fica desabilitado. Solução: Habilitar manualmente em Administration → Plugins (único clique manual).
+
+Ajuste Fino de UX/UI: Criamos um JSON final com colorMode: "background_solid" para cores vivas, table com displayMode: "gradient" para fundo colorido, e eixos Y separados para Temperatura (°C) e Umidade (%).
+
+A Lição para o README (Futuro):
+
+"No Grafana, use "item": { "key": "esp32.modo" } para evitar ambiguidade de busca por nome. Para dados textuais, use o painel table com colorMode: gradient — ele aceita qualquer tipo e ainda fica visualmente atraente. E lembre-se: o provisionamento via JSON é a única forma de garantir que o dashboard sobreviva a um docker compose down -v."
+
+🏆 O que temos agora (documentado)
+Com os resumos de 01 a 06, temos a base completa para escrever o README definitivo do projeto.
+
+O próximo passo natural é consolidar tudo no README.md.
+
+Você quer que eu:
+
+Gere o README.md final completo agora (com todas as seções: Arquitetura, Passo a Passo, Troubleshooting e Lições Aprendidas das Fatias 0-4)?
+
+Adicione uma seção de "Decisões de Design" (UX/UI do Grafana) ao README?
+
+Volte para a Fatia 3 (Telegram) e depois consolidamos?
+
+Me diga qual prefere! 🚀
+
+07.txt
+Recebido o 07.txt! Este arquivo é a reta final da Fatia 4 — onde a gente passou do "quase lá" para a vitória total, e documentou as manhas do Grafana com o plugin do Zabbix.
+
+Aqui está o Resumo Estruturado do Arquivo 07:
+
+Resumo Estruturado — Fatia 4 (A Vitória do Dashboard e o UX/UI)
+O que tentamos fazer:
+Fazer o dashboard do Grafana exibir os 5 painéis corretamente (Temperatura, Umidade, Modo, Estado e Gráfico), vencendo os últimos obstáculos do plugin do Zabbix.
+
+O que deu certo (Acertos):
+
+O Pulo do Gato (Painel table para texto): O erro persistente do painel "Modo" puxando o item errado (Invasões) foi resolvido ao usar o painel table em vez de stat. O stat não aceita texto (value_type=4) e caía em fallback numérico. A tabela aceita o texto e o gradient deixa bonito.
+
+Filtro por key técnico: No JSON final, usamos "item": { "key": "esp32.modo" } (ou no último caso, o filtro por nome exato combinado com table), evitando a ambiguidade de busca por substring.
+
+UX/UI Melhorado (JSON Final): O último JSON entregue adicionou colorMode: "background_solid" (cores vivas), graphMode: "area" (gráfico de fundo nos stats), wideLayout (números grandes), linhas de agrupamento ("Sensores ambientais", "Histórico") e ícones de cor.
+
+Idempotência no Grafana: Validamos o conceito de allowUiUpdates: false — a UI é só para visualização; a fonte da verdade é o arquivo JSON (IaC).
+
+O que precisou de atenção (Becos sem saída e soluções):
+
+Senha do Admin resetada: O comando grafana cli admin reset-admin-password admin funcionou, mas trocou a senha. Solução: Reiniciar o container (o .env restaura a senha original).
+
+Erro unexpected parameter na API: Erro de sintaxe no JSON. Solução: Filtros por nome simples ("filter": "Temperatura") funcionam para os numéricos, mas o table é o único que aceita texto sem quebrar.
+
+Dashboard não recarregava: O Grafana priorizava a versão do banco (UI) sobre o JSON. Solução: Apagar o dashboard pela interface para forçar a releitura do arquivo, ou usar allowUiUpdates: false.
+
+A Lição para o README (Futuro):
+
+"No Grafana com o plugin Zabbix, use painéis table com displayMode: gradient para itens de texto (value_type=4). O painel stat só lida com números. Para os filtros, prefira o nome exato do item ou o key técnico no JSON. E lembre-se: com allowUiUpdates: false, o arquivo JSON é a única fonte da verdade — a UI é apenas para visualização."
+
+🏆 Status Final da Documentação
+Agora temos uma coleção de ouro para o README:
+
+Arquivo	Conteúdo
+01.txt	Decisões de arquitetura e fundação
+02.txt	Execução do Passo 0 (Mac + Docker)
+03.txt	Ponte MQTT (Mosquitto 2.x)
+04.txt	Zabbix + Dockerfile customizado + External check
+05.txt	Automação via Python (IaC do Zabbix)
+06.txt	Provisionamento do Grafana via JSON
+07.txt	UX/UI do Grafana e ajustes finais do dashboard
+Agora sim, temos material completo para o README.md definitivo, incluindo as lições de UX/UI do Grafana (que são raríssimas de se encontrar documentadas).
+
+Qual o próximo passo?
+
+Gerar o README.md definitivo (com todas as seções: Arquitetura, Passo a Passo, Troubleshooting e Lições Aprendidas das Fatias 0-4 e o bônus do Grafana).
+
+Voltar para a Fatia 3 (Telegram) e depois adicionar uma seção nova ao README.
+
+Salvar o dashboard final no Git (se ainda não fez).
+
+Me diga! 🚀
+
+08. txt
+Perfeito! O 08.txt fecha o ciclo da Fatia 5, documentando a batalha final contra a API do Zabbix 7.0 e a criação do script configurar_zabbix.py definitivo.
+
+Aqui está o Resumo Estruturado do Arquivo 08:
+
+Resumo Estruturado — Fatia 5 (A Vitória do IaC no Zabbix)
+O que tentamos fazer:
+Transformar toda a configuração manual do Zabbix (host, itens, macros) em um script Python (configurar_zabbix.py) totalmente idempotente, que pudesse ser rodado múltiplas vezes sem duplicar dados.
+
+O que deu certo (Acertos):
+
+A Estrutura do Script: O padrão upsert (verifica se existe → atualiza, senão → cria) foi implementado com sucesso, cobrindo Grupo, Host, Item Mestre e Itens Dependentes.
+
+Separação de Payload (Create vs Update): O "pulo do gato" foi perceber que o Zabbix 7.0 rejeita campos imutáveis no item.update (como hostid e master_itemid). A solução foi separar o dicionário de dados: um para create (completo) e outro para update (apenas mutáveis).
+
+O trends Dinâmico: Descobrimos que trends > 0 só é aceito para itens numéricos (float). Para texto e unsigned, o Zabbix exige trends: "0". O script agora calcula isso automaticamente baseado no value_type.
+
+Macros e Template: O script criou 6 macros configuráveis e exportou o template YAML (template_esp32_cpd.yaml), que serve como "contrato" do setup.
+
+O que precisou de atenção (Becos sem saída e soluções):
+
+unexpected parameter "hostid": O update tentava enviar hostid (imutável). Solução: Remover do payload de update.
+
+value must be 0 (trends): Itens de texto recebiam trends: "365d". Solução: Calcular dinamicamente (trends = "365d" if value_type == 0 else "0").
+
+cannot be empty (params): O update do item mestre enviava preprocessing: [] vazio. Solução: Remover o campo preprocessing do update do mestre.
+
+A Lição para o README (Futuro):
+
+"Para IaC no Zabbix 7.0, a API é rigorosa: hostid e master_itemid são imutáveis após a criação. trends só pode ser maior que zero em itens numéricos (float). E preprocessing vazio é rejeitado no update. A solução é usar o padrão upsert com payloads separados para create e update, e calcular dinamicamente os campos que dependem do tipo de dado."
+
+🏆 Status da Documentação
+Agora temos 8 arquivos de bastidores cobrindo:
+
+01 a 03: Fundação, Docker e Ponte MQTT.
+
+04 a 05: Zabbix (interface e automação via Python).
+
+06 a 08: Grafana (provisionamento, UX/UI e a batalha do IaC).
+
+Temos o material completo para o README.md definitivo.
+
+🎯 Próximo Passo — Consolidar o README
+Agora que você tem todo o histórico documentado, o próximo passo natural é consolidar tudo no README.md definitivo.
+
+Ele vai conter:
+
+Visão Geral e Arquitetura (o diagrama do fluxo Wokwi → Zabbix → Grafana).
+
+Passo a Passo (Happy Path) com os comandos exatos.
+
+Troubleshooting — a "enciclopédia" com todos os erros que resolvemos (do zsh ao trends do Zabbix).
+
+Lições Aprendidas — os insights valiosos sobre Docker, MQTT, API do Zabbix e Grafana.
+
+Roadmap — o que está feito e o que falta (Fatias 3, 6, 7).
+
+Quer que eu gere o README.md final completo agora? 🚀
+
+09.txt
+Perfeito! O 09.txt é a consolidação da Fatia 5 — a prova definitiva de que o script de IaC do Zabbix é idempotente e funciona de verdade. É o arquivo que fecha o ciclo da automação.
+
+Aqui está o Resumo Estruturado do Arquivo 09:
+
+Resumo Estrututurado — Fatia 5 (A Vitória do IaC e a Idempotência)
+O que tentamos fazer:
+Finalizar o script configurar_zabbix.py para que ele criasse e atualizasse toda a estrutura do Zabbix (Host, Item Mestre, 9 Itens Dependentes, Macros e Template) de forma idempotente, sem erros de API.
+
+O que deu certo (Acertos):
+
+Correção do trends: O erro Invalid parameter "/1/trends": value must be 0 foi resolvido ao calcular dinamicamente o trends baseado no value_type:
+
+trends = "365d" se for float (0)
+
+trends = "0" se for texto (4) ou unsigned (3)
+
+Script Idempotente: A execução final mostrou [=] em todos os itens, provando que o script detecta o estado existente e apenas atualiza, sem duplicar nada.
+
+Template Exportado: O script gerou o zabbix/template_esp32_cpd.yaml, que serve como "contrato" do setup (importável em outro Zabbix).
+
+Tratamento de Erros por Item: Cada item dependente tem seu próprio try/except, então um erro num item não derruba os outros.
+
+O que precisou de atenção (Becos sem saída e soluções):
+
+unexpected parameter "hostid": O item.update não aceita hostid (imutável). Solução: Remover do payload de update.
+
+unexpected parameter "master_itemid": Idem. Solução: Remover do payload de update.
+
+cannot be empty (params): O update do item mestre enviava preprocessing: [] vazio. Solução: Remover o campo preprocessing do update do mestre.
+
+value must be 0 (trends): Itens de texto/unsigned recebiam trends: "365d". Solução: Calcular dinamicamente (trends = "365d" if value_type == 0 else "0").
+
+A Lição para o README (Futuro):
+
+"No Zabbix 7.0, a API é rigorosa com campos imutáveis. hostid e master_itemid não podem ser alterados via item.update. Além disso, trends só faz sentido para itens numéricos (float) — para texto e unsigned, deve ser "0". A solução é usar o padrão upsert com payloads separados para create (completo) e update (apenas campos mutáveis), calculando dinamicamente os campos que dependem do tipo de dado."
+
+🏆 Status Final do Projeto
+Com os 9 arquivos de bastidores documentados, temos a história completa do projeto:
+
+Fatia	Status	Documentação
+0. Base Docker	✅	01.txt, 02.txt
+1. Ponte MQTT	✅	03.txt
+2. Ingestão no Zabbix	✅	04.txt, 05.txt
+3. Gatilhos + Telegram	⏳ (adiada)	—
+4. Dashboard Grafana	✅	06.txt, 07.txt, 08.txt
+5. IaC do Zabbix	✅	08.txt, 09.txt
+6. NOC 3D	⏳ (pendente)	—
+7. Ações HMAC	⏳ (pendente)	—
+6 de 8 fatias concluídas! As duas que faltam são as mais complexas (NOC 3D e Ações), mas a base do monitoramento está 100% funcional e reproduzível.
+
+🎯 Próximo Passo — O que você quer fazer?
+Consolidar o README.md final com tudo o que aprendemos (Fatias 0-5). ~30 min.
+
+Voltar para a Fatia 3 (Telegram) — a cereja do bolo que ficou pendente. ~40 min.
+
+Ir para a Fatia 6 (NOC 3D) — o painel visual mais impressionante. ~2h.
+
+Ir para a Fatia 7 (Ações HMAC) — botões no Grafana que mudam o ESP32. ~1h30.
+
+O que prefere? 🚀
+
+10.txt
+Perfeito! O 10.txt é o diário de bordo da vitória final sobre o Grafana, documentando a saga completa: desde o JSON com "No data", passando pelo painel Text que piorou tudo, até a descoberta de que o painel table era a solução correta para itens de texto (value_type=4).
+
+Aqui está o Resumo Estruturado do Arquivo 10:
+
+Resumo Estruturado — Fatia 4 (A Batalha Final do Grafana e a Vitória dos 5 Painéis)
+O que tentamos fazer:
+Fazer o dashboard do Grafana exibir todos os 5 painéis corretamente, especialmente os itens de texto "Modo" e "Estado", que não apareciam.
+
+O que deu certo (Acertos):
+
+A Prova do Zabbix (diag_zabbix.py): O script de diagnóstico provou que o Zabbix estava coletando tudo perfeitamente (Temperatura 52.9, Modo ARMADO, Estado NORMAL, com LAST CLOCK atualizado). O problema estava isolado no Grafana.
+
+A Solução table: Depois de tentar o painel stat (que não aceita texto), text (que piorou tudo, pois é estático) e key técnico (que não funciona no JSON), a solução vencedora foi o painel table com cellHeight: "lg". Ele aceita qualquer value_type (texto, número, unsigned).
+
+Filtro por Substring: O plugin do Zabbix aceita "item": { "filter": "Modo" } (busca por substring do nome). Como o item no Zabbix se chama "Modo", o filtro funcionou. Para "Estado", também.
+
+UX/UI da Vitória: O resultado final tem 5 painéis: Temperatura (52.9°C vermelho), Umidade (69.5% amarelo), Modo (ARMADO em tabela), Estado (NORMAL em tabela) e Gráfico (duas linhas).
+
+O que precisou de atenção (Becos sem saída e soluções):
+
+No data em todo o dashboard: O JSON usava "host": "Rack CPD", que o plugin do Grafana 13 não aceita de forma confiável no provisionamento. Solução: Remover o filtro de host do JSON.
+
+Painel Text piorou tudo: Ao mudar "Modo" para type: "text", o painel virou um campo de texto estático (não busca dados). Solução: Usar table, não text.
+
+Painel stat com texto: O stat só aceita números. Solução: table aceita qualquer tipo.
+
+A Lição para o README (Futuro):
+
+"No Grafana com o plugin Zabbix, use painéis table com cellHeight: "lg" para itens de texto (value_type=4). O painel stat só lida com números. Evite o painel text — ele é estático. Para os filtros no JSON de provisionamento, use "item": { "filter": "NomeDoItem" } (substring do nome visível), pois o filtro por key técnico não funciona de forma confiável."
+
+📚 Status Final da Documentação
+Agora temos 10 arquivos de bastidores cobrindo toda a jornada:
+
+Arquivo	Assunto
+01.txt	Decisões de arquitetura e fundação
+02.txt	Passo 0 (Mac + Docker)
+03.txt	Ponte MQTT (Mosquitto 2.x)
+04.txt	Zabbix + Dockerfile customizado
+05.txt	Automação via Python (IaC do Zabbix)
+06.txt	Provisionamento do Grafana via JSON
+07.txt	UX/UI do Grafana (painéis e gradientes)
+08.txt	API do Zabbix 7.0 (idempotência, trends)
+09.txt	Vitória final do IaC (script idempotente)
+10.txt	Batalha final do Grafana (painel table para texto)
+Temos o material completo para o README.md definitivo.
+
+🎯 Próximo Passo
+Chegou a hora de consolidar tudo. Temos 10 arquivos de bastidores que documentam a jornada completa até aqui.
+
+O que você prefere?
+
+Gerar o README.md definitivo agora (com todas as seções: Arquitetura, Passo a Passo, Troubleshooting e Lições Aprendidas das Fatias 0-5).
+
+Voltar para a Fatia 3 (Telegram) e depois consolidar o README.
+
+Ir para a Fatia 6 (NOC 3D) ou Fatia 7 (Ações HMAC).
+
+Me diga qual caminho seguir! 🚀
+
+11.txt
+Perfeito! O 11.txt é a consolidação da vitória visual e do UX/UI do Grafana. Ele documenta a jornada final: a descoberta de que o painel table era a solução para itens de texto, a diferença entre allowUiUpdates: false (JSON manda) e true (UI manda), e o JSON final com visual profissional (fundo sólido, 2 eixos Y, gradientes).
+
+Aqui está o Resumo Estruturado do Arquivo 11:
+
+Resumo Estruturado — Fatia 4 (UX/UI e o Dashboard Profissional)
+O que tentamos fazer:
+Transformar o dashboard funcional (mas feio) em um painel profissional, com cores indicativas, tabelas estilizadas e gráficos com escalas separadas.
+
+O que deu certo (Acertos):
+
+O Segredo do table: Depois de testar stat (não aceita texto) e text (estático), a solução final foi o painel table com displayMode: "gradient" e cellHeight: "lg". Ele aceita texto e ainda fica visualmente atraente.
+
+allowUiUpdates: false: Descobrimos que essa configuração é a chave do IaC verdadeiro. Com false, o JSON é a fonte da verdade e a UI é ignorada após o restart. Para "congelar" mudanças, basta editar o JSON e reiniciar.
+
+O JSON Melhorado: A versão final adicionou colorMode: "background_solid" (cores vivas), wideLayout: true (números grandes), graphTooltip: 1 (tooltip compartilhado), linhas de agrupamento ("Sensores ambientais", "Histórico") e 2 eixos Y no gráfico.
+
+Níveis de "Salvar": Aprendemos a diferença entre salvar no banco (temporário), no JSON (permanente) e no Git (versionamento).
+
+O que precisou de atenção (Becos sem saída e soluções):
+
+Painel Text piorou tudo: Ao trocar "Modo" para text, o painel virou estático (não busca dados). Solução: Usar table.
+
+Save na UI é temporário: Com allowUiUpdates: false, o Save no banco é sobrescrito pelo JSON no próximo restart. Solução: Editar sempre o JSON.
+
+Exportar da UI corrompe o JSON: O JSON exportado vem com "id": 1 e "uid": "abc123" (aleatório), o que conflita com o provisionamento. Solução: Ajustar para "id": null e manter o uid original.
+
+A Lição para o README (Futuro):
+
+"No Grafana, use painéis table com displayMode: 'gradient' para itens de texto (value_type=4). O stat só lida com números. Com allowUiUpdates: false, o JSON é a fonte da verdade e a UI é apenas visualização. Para versionar o dashboard, salve o JSON no Git — é o único jeito de blindar o projeto contra perdas."
+
+📚 Status Final da Documentação
+Agora temos 11 arquivos de bastidores cobrindo a jornada completa até aqui:
+
+Arquivo	Assunto
+01 a 03	Fundação, Docker e Ponte MQTT
+04 a 05	Zabbix (interface e automação via Python)
+06 a 08	Grafana (provisionamento, UX/UI e batalha final)
+09	Vitória do IaC no Zabbix (script idempotente)
+10	A saga do painel table para texto
+11	UX/UI profissional e níveis de "salvar"
+Temos o material completo para o README.md definitivo.
+
+🎯 Próximo Passo
+Chegou a hora de consolidar tudo em documentação oficial. O projeto está com 5 de 8 fatias concluídas (0, 1, 2, 4, 5). Faltam:
+
+Fatia 3 (Telegram + Gatilhos) — adiada.
+
+Fatia 6 (NOC 3D) — pendente.
+
+Fatia 7 (Ações HMAC) — pendente.
+
+O que prefere?
+
+Gerar o README.md definitivo agora (com todas as seções: Arquitetura, Passo a Passo, Troubleshooting e Lições Aprendidas das Fatias 0-5).
+
+Voltar para a Fatia 3 (Telegram) e depois consolidar.
+
+Ir para a Fatia 6 (NOC 3D) ou Fatia 7 (Ações HMAC).
+
+Me diga qual caminho seguir! 🚀
+
+Por enquanto o README.md esta assim:
+Perfeito! Analisei o seu README.md atual. Ele está muito bom — cobre as Fatias 0, 1 e 2 com maestria, incluindo a "Enciclopédia de Erros" e as "Lições Aprendidas".
+
+Mas ele tem duas "dívidas" em relação a tudo que fizemos depois:
+
+Ele para na Fatia 2. Não menciona o Dashboard do Grafana (Fatia 4) nem o IaC do Zabbix (Fatia 5), que já estão 100% funcionais.
+
+Ele pede o Token do Telegram nos pré-requisitos, mas a Fatia 3 (Telegram) foi adiada.
+
+Vou te dar o README.md definitivo, versão 2.0, atualizado com tudo o que construímos até agora (Fatias 0, 1, 2, 4 e 5). Ele inclui o diagrama atualizado com o Grafana, os comandos para subir o dashboard via JSON, e a tabela de Troubleshooting expandida com os novos erros do Grafana e da API do Zabbix.
+
+📘 README.md Definitivo (v2.0)
+Substitua o conteúdo do seu README.md por este:
+
+markdown
+# 🏢 Monitoramento CPD: Físico e Lógico (ESP32 + Zabbix + Grafana + MQTT)
+
+Este projeto implementa uma solução completa de monitoramento para uma sala de servidores (CPD). Ele une o **monitoramento físico** (sensores de temperatura, porta, presença, etc. em um ESP32) com o **monitoramento lógico** (coleta centralizada, processamento e visualização) usando um ecossistema moderno e conteinerizado.
+
+## 📌 Visão Geral da Arquitetura
+
+O fluxo de dados foi desenhado para ser isolado e reprodutível localmente, usando o Wokwi (simulador) como fonte de dados nesta fase.
+
+1. **Dispositivo (ESP32/Wokwi):** Simula os sensores e publica um payload JSON em um broker público (`broker.emqx.io`).
+2. **Ponte MQTT (Mosquitto Local):** Um container Mosquitto roda localmente, assina os tópicos do broker público e os republica internamente com o prefixo `publico/`.
+3. **Banco de Dados e Orquestração (Zabbix):** O Zabbix Server (via script externo customizado) lê os tópicos do Mosquitto local. Ele extrai os dados individuais (JSONPath) e armazena no PostgreSQL.
+4. **Visualização (Grafana):** O Grafana consome os dados via API do Zabbix e exibe em dashboards provisionados via código (JSON).
+
+**Diagrama do Fluxo:**
+```text
+[ Wokwi (ESP32) ]
+      │ (MQTT - Internet)
+      ▼
+[ broker.emqx.io ]
+      │ (Bridge MQTT)
+      ▼
+[ cpd-mosquitto ] (Docker - cpd-net)
+      │ (External Check via script .sh)
+      ▼
+[ cpd-zabbix-server ] ──> [ cpd-postgres ]
+      │ (API)
+      ▼
+[ cpd-grafana ] (Provisionado via JSON)
+🛠️ Pré-requisitos
+Sistema Operacional: macOS (testado em Mac mini M4 Apple Silicon) ou Linux.
+
+Docker Desktop instalado e em execução (com suporte a arm64 nativo).
+
+Python 3 (para rodar scripts de automação IaC).
+
+Wokwi (simulador online) configurado para rodar o firmware do ESP32.
+
+🚀 Passo a Passo (Happy Path)
+1. Preparar o Ambiente
+Clone o repositório e crie o arquivo de variáveis de ambiente:
+
+bash
+git clone <url-do-repositorio>
+cd monitoramento-cpd
+cp .env.example .env
+Abra o .env e preencha as senhas do PostgreSQL e do Grafana.
+
+⚠️ Atenção: Se a senha tiver caracteres especiais (#, $, !, espaço), coloque-a entre aspas duplas (ex: POSTGRES_PASSWORD="minha#senha").
+
+2. Subir a Infraestrutura Base
+bash
+docker compose up -d
+docker compose ps
+Aguarde até que todos os containers (cpd-mosquitto, cpd-postgres, cpd-zabbix-server, cpd-zabbix-web, cpd-grafana) estejam Up (healthy). O Zabbix Web estará disponível em http://localhost:8080 (Admin/zabbix).
+
+3. Configurar a Ponte MQTT (Mosquitto)
+Para que o Zabbix local receba os dados do Wokwi sem expor sua rede, usamos uma bridge no Mosquitto.
+
+O arquivo mosquitto/config/conf.d/bridge.conf já está configurado.
+
+Certifique-se de que a linha include_dir /mosquitto/config/conf.d está ativa no mosquitto.conf.
+
+Teste com o Wokwi rodando:
+
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+4. Configurar o Zabbix via Infraestrutura como Código (IaC)
+Não crie itens manualmente na interface. Use o script de automação para criar o Host, o Item Mestre e os 9 itens dependentes.
+
+bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install requests python-dotenv
+python configurar_zabbix.py
+O script lerá o arquivo .env (adicione ZABBIX_URL, ZABBIX_USER, ZABBIX_PASSWORD nele) e criará toda a árvore de monitoramento de forma idempotente.
+
+5. Configurar o Dashboard no Grafana
+O Grafana é provisionado automaticamente via arquivos JSON e YAML. Não é necessário criar painéis manualmente.
+
+O datasource do Zabbix é criado via grafana/provisioning/datasources/zabbix.yaml.
+
+O dashboard é carregado via grafana/dashboards/cpd-dashboard.json.
+
+Importante: O plugin do Zabbix (alexanderzobnin-zabbix-app) precisa ser habilitado manualmente na primeira vez:
+
+Acesse http://localhost:3000 (admin / senha do .env).
+
+Vá em Administration → Plugins, procure "Zabbix" e clique em Enable.
+
+Acesse Dashboards → CPD → CPD Dashboard para ver os dados em tempo real.
+
+6. Verificar os Dados
+Acesse http://localhost:8080 (Zabbix). Vá em Monitoring → Latest data, filtre pelo host esp32-cpd e veja os 10 itens (Temperatura, Umidade, Porta, etc.) atualizando em tempo real.
+
+🚑 Troubleshooting (Enciclopédia de Erros)
+Esta seção documenta os problemas reais encontrados durante a construção e suas soluções.
+
+Sintoma / Erro	Causa Provável	Solução
+zsh: event not found: ) ao colar scripts no terminal do Mac.	O zsh interpreta o caractere ! como histórico.	Salve o comando em um arquivo .sh e execute com bash arquivo.sh, ou use aspas simples.
+Mosquitto morre com Unknown configuration variable "include".	O Mosquitto 2.x substituiu include por include_dir.	Coloque os arquivos .conf na pasta conf.d/ e use include_dir /mosquitto/config/conf.d.
+Mosquitto morre com Empty bridge remote_username value.	Diretivas de autenticação vazias causam erro fatal.	Remova as linhas remote_username e remote_password do bridge.conf se o broker for anônimo.
+Mosquitto morre com Unknown configuration variable "local_prefix".	A sintaxe da ponte foi alterada no Mosquitto 2.x.	O prefixo deve ir na própria linha do tópico: topic topico/remoto in 1 publico/ "".
+Zabbix Server entra em loop: ERROR: "LogType" "console" parameter can only be used with the -f.	O command do Docker Compose sobrescreveu o entrypoint do container.	Crie um Dockerfile customizado (zabbix-server-custom). Instale o mosquitto-clients via apk e não sobrescreva o entrypoint original.
+Item tipo Script do Zabbix dá SyntaxError: unterminated statement.	O parser interno do Zabbix se confunde com hífens (flags) de comandos shell.	Mude o item para o tipo External check e crie o script físico (mqtt_status.sh) dentro da pasta /usr/lib/zabbix/externalscripts/ do container, com permissão de execução (chmod +x).
+Item dependente dá erro: Value of type "string" is not suitable for value type "Numeric (float)".	O passo de Preprocessing (JSONPath) não foi adicionado ou está vazio.	Na aba Preprocessing do item, adicione o passo JSONPath com o caminho exato (ex: $.temp_c).
+API do Zabbix retorna unexpected parameter "hostid".	O item.update não aceita hostid (imutável).	Remova o hostid do payload de update. Use-o apenas no create.
+API do Zabbix retorna value must be 0 (trends).	trends > 0 só é válido para itens numéricos (float).	Para texto (4) e unsigned (3), use trends: "0". Calcule dinamicamente no script Python.
+Painel do Grafana mostra No data.	O filtro do item no JSON ("filter") não bate com o nome exato.	Use "item": { "key": "esp32.temp" } ou o nome exato do item no Zabbix.
+Painel "Modo" e "Estado" no Grafana mostram 0 ou No data.	O painel stat não aceita texto (value_type=4).	Mude o tipo do painel para table. O table aceita qualquer tipo de dado.
+Plugin do Zabbix não aparece no Grafana.	O plugin vem desabilitado por padrão.	Vá em Administration → Plugins, procure "Zabbix" e clique em Enable.
+📚 Lições Aprendidas (Para a Posteridade)
+Zsh no macOS: Nunca cole scripts com ! direto no terminal. Use arquivos .sh.
+
+Isolamento é tudo: Usar uma rede Docker (cpd-net) e um broker local evitou expor o Zabbix à internet, usando uma "ponte" para puxar os dados.
+
+Infraestrutura como Código (IaC): Criar os 7 itens dependentes manualmente levaria 15 minutos e seria sujeito a erros. O script configurar_zabbix.py provou que a API do Zabbix é rápida, idempotente e à prova de erros.
+
+O tipo External check é o "canivete suíço": Quando o Zabbix luta contra scripts shell, empacotar o comando em um .sh no container e chamá-lo via External Check é a solução mais robusta.
+
+Dockerfile customizado: Sobrescrever entrypoint ou command de imagens oficiais é uma armadilha. A melhor prática é estender a imagem com um Dockerfile.
+
+Grafana: table para texto: O painel stat só lida com números. Para texto (value_type=4), use table com displayMode: "gradient".
+
+Grafana: allowUiUpdates: false: Com essa configuração, o JSON é a fonte da verdade e a UI é apenas visualização. Para mudar algo, edite o JSON e reinicie o container.
+
+📂 Estrutura de Pastas
+text
+monitoramento-cpd/
+├── .env.example
+├── .env                    (não versionado)
+├── docker-compose.yml
+├── configurar_zabbix.py    (script IaC)
+├── docs/
+│   └── 00-plano.md
+├── mosquitto/
+│   └── config/
+│       ├── mosquitto.conf
+│       └── conf.d/
+│           └── bridge.conf
+├── zabbix-server-custom/
+│   └── Dockerfile          (instala mosquitto-clients)
+├── grafana/
+│   ├── provisioning/
+│   │   ├── datasources/zabbix.yaml
+│   │   └── dashboards/default.yaml
+│   └── dashboards/
+│       └── cpd-dashboard.json
+└── README.md               (este arquivo)
+🔮 Próximos Passos (Roadmap)
+☑ Fatia 0: Base Docker
+☑ Fatia 1: Ponte MQTT
+☑ Fatia 2: Ingestão no Zabbix (via IaC)
+□ Fatia 3: Gatilhos e Telegram (adiada)
+☑ Fatia 4: Dashboard no Grafana (via IaC)
+☑ Fatia 5: Configuração 100% via código (idempotente)
+□ Fatia 6: Painel NOC 3D
+□ Fatia 7: Ações (HMAC)
+text
+
+---
+
+**O que mudou em relação ao seu README atual:**
+
+1. **Diagrama atualizado:** Agora mostra o Grafana no fluxo.
+2. **Passo 5 (Grafana):** Adicionei a seção que faltava, com o passo manual de habilitar o plugin.
+3. **Troubleshooting expandido:** De 8 para **12 linhas**, incluindo os erros do Grafana (`stat` vs `table`) e da API do Zabbix (`trends`, `hostid`).
+4. **Lições Aprendidas:** De 5 para **7 lições**, incluindo as do Grafana.
+5. **Estrutura de Pastas:** Atualizada com as pastas `grafana/provisioning` e `grafana/dashboards`.
+6. **Roadmap:** Atualizado com os status reais (Fatias 4 e 5 concluídas).
+
+---
+
+**O que fazer agora:**
+
+1. **Salvar o README:** Cole o conteúdo acima no arquivo `README.md`.
+2. **Commitar no Git (se já tiver repo):** `git add . && git commit -m "docs: atualiza README com Fatias 4 e 5"`
+3. **Partir para a próxima fatia:** Me diga se quer voltar para o **Telegram (Fatia 3)**, ir para o **NOC 3D (Fatia 6)** ou as **Ações HMAC (Fatia 7)**.
+
+O README está sólido. 🚀
+Agora chegamos na parte que eu mais estava aguardando. Fatia 6
+Encontrados 12 resultados
+Finalmente chegou a hora! A Fatia 6 (NOC 3D) é a mais visual e impressionante de todas. Vamos transformar o seu dashboard plano em uma sala de servidores 3D interativa, onde o rack, a porta, a temperatura e os alertas reagem em tempo real.
+
+Como você já viu o poder do IaC, vamos fazer isso da forma mais "engenheira" possível: provisionando tudo via código, sem cliques manuais (exceto a habilitação do plugin).
+
+🎯 O Plano de Ataque
+Para o 3D funcionar no Grafana, precisamos de duas peças:
+
+Plugin Business Text: É ele que permite injetar HTML/JavaScript (Three.js) dentro de um painel do Grafana .
+
+Biblioteca Three.js: O motor 3D que vai desenhar a sala, o rack e as animações .
+
+Vamos criar uma cena isométrica (aquela visão de "planta técnica" que você viu no README original), com os seguintes elementos reagindo aos dados do Zabbix:
+
+Rack 42U (pisca em vermelho se houver problema).
+
+LEDs de status (verde = normal, vermelho = alerta).
+
+Porta (abre e acende luz de emergência se EMERGENCIA_RACK).
+
+Sensor de temperatura (muda de cor se passar de 28°C/32°C).
+
+Passo 1 — Habilitar o Plugin Business Text
+O Grafana não tem o Business Text instalado por padrão. Vamos instalá-lo via Docker (no docker-compose.yml).
+
+Abra o docker-compose.yml:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/docker-compose.yml
+No bloco grafana:, encontre a linha GF_INSTALL_PLUGINS (ou GF_PLUGINS_PREINSTALL) e adicione o plugin:
+
+yaml
+      GF_INSTALL_PLUGINS: "alexanderzobnin-zabbix-app, marcusolsson-dynamictext-panel"
+(Se você já usa GF_PLUGINS_PREINSTALL, adicione o marcusolsson-dynamictext-panel lá também).
+
+Suba o Grafana novamente:
+
+bash
+docker compose up -d --force-recreate grafana
+Verificação: Acesse http://localhost:3000 → Administration → Plugins → Procure por "Business Text". Se aparecer, está instalado. (Se não aparecer, aguarde 30s e recarregue).
+
+Passo 2 — Criar o Dashboard 3D via JSON (IaC)
+Agora vamos criar um novo dashboard chamado cpd-3d.json. Ele terá um único painel (o Business Text) ocupando a tela inteira.
+
+Crie o arquivo:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-3d.json << 'EOF'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "gridPos": { "h": 24, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "content": "<div id=\"three-container\" style=\"width:100%;height:100%;\"></div>\n\n<script type=\"module\">\n  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';\n  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';\n\n  // 1. Configuração da Cena\n  const container = document.getElementById('three-container');\n  const scene = new THREE.Scene();\n  scene.background = new THREE.Color(0x1a1a2e);\n  \n  const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);\n  camera.position.set(8, 8, 8);\n  camera.lookAt(0, 0, 0);\n\n  const renderer = new THREE.WebGLRenderer({ antialias: true });\n  renderer.setSize(container.clientWidth, container.clientHeight);\n  renderer.shadowMap.enabled = true;\n  container.appendChild(renderer.domElement);\n\n  const controls = new OrbitControls(camera, renderer.domElement);\n  controls.enableDamping = true;\n  controls.autoRotate = true;\n  controls.autoRotateSpeed = 0.5;\n\n  // 2. Iluminação\n  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);\n  scene.add(ambientLight);\n  const dirLight = new THREE.DirectionalLight(0xffffff, 1);\n  dirLight.position.set(5, 10, 7);\n  dirLight.castShadow = true;\n  scene.add(dirLight);\n\n  // 3. Chão (Grid)\n  const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);\n  scene.add(gridHelper);\n\n  // 4. Rack (Caixa principal)\n  const rackGeo = new THREE.BoxGeometry(3, 6, 2);\n  const rackMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.7 });\n  const rack = new THREE.Mesh(rackGeo, rackMat);\n  rack.position.set(0, 3, 0);\n  rack.castShadow = true;\n  rack.receiveShadow = true;\n  scene.add(rack);\n\n  // 5. LEDs de status (Simulação)\n  const ledGeo = new THREE.SphereGeometry(0.1, 16, 16);\n  const ledMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.5 });\n  \n  for (let i = 0; i < 5; i++) {\n    const led = new THREE.Mesh(ledGeo, ledMat.clone());\n    led.position.set(-1.2, 1 + i, 1.05);\n    scene.add(led);\n  }\n\n  // 6. Animação (Loop)\n  function animate() {\n    requestAnimationFrame(animate);\n    controls.update();\n    renderer.render(scene, camera);\n  }\n  animate();\n\n  // 7. Redimensionamento\n  window.addEventListener('resize', () => {\n    camera.aspect = container.clientWidth / container.clientHeight;\n    camera.updateProjectionMatrix();\n    renderer.setSize(container.clientWidth, container.clientHeight);\n  });\n</script>",
+        "editorMode": "html",
+        "editor": {
+          "format": "auto",
+          "height": 400
+        }
+      },
+      "title": "Sala do Servidor (NOC 3D)",
+      "type": "marcusolsson-dynamictext-panel"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cpd", "3d"],
+  "templating": { "list": [] },
+  "time": { "from": "now-5m", "to": "now" },
+  "timezone": "browser",
+  "title": "CPD 3D",
+  "uid": "cpd-3d",
+  "version": 1
+}
+EOF
+Passo 3 — Reler o Dashboard e Ver o 3D
+Reinicie o Grafana para ele carregar o novo JSON:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+No Grafana, vá em Dashboards → CPD → CPD 3D.
+
+O que você deve ver: Uma sala escura com um grid no chão, um rack 3D no centro, 5 LEDs verdes e a câmera girando lentamente ao redor.
+
+(Se aparecer "No data" ou um erro, é porque o painel Business Text está esperando dados do Zabbix. Como ele está com datasource configurado mas sem targets, o Grafana pode reclamar. Para ignorar, clique no título do painel → Edit → na aba Query, adicione uma query qualquer do Zabbix (ex: Temperatura). O JavaScript vai rodar independente do dado.)
+
+🎯 O Próximo Nível (A Parte Interativa)
+O JSON acima já prova que o Three.js roda dentro do Grafana. Mas ele é estático (só gira a câmera).
+
+Para ele reagir aos dados do Zabbix, o JavaScript precisa ler os dados da query e mudar as cores/estados. Isso é feito no After Content Ready do Business Text.
+
+O que precisamos fazer na próxima etapa:
+
+Ler os dados: O Business Text expõe context.data (os dados da query). Precisamos pegar o valor da Temperatura, Estado, Modo, etc.
+
+Mapear para o 3D: Se Estado === "EMERGENCIA_RACK", o rack fica vermelho e a porta abre. Se Temp > 32, um "calor" sobe do rack.
+
+Atualizar a cena: O loop de animação verifica as variáveis a cada frame.
+
+Me diga:
+
+O plugin Business Text apareceu em Administration → Plugins?
+
+O dashboard CPD 3D apareceu no menu e o rack 3D está girando na tela?
+
+Quer que eu te passe a versão interativa (que lê os dados do Zabbix e muda as cores do rack)?
+

@@ -1,0 +1,869 @@
+
+ESte o README.md de um excelente projeto que quero aprender muito e tentar adaptar com o meu projeto. Vamos tentar?
+Vamos sim! 🚀
+Li o README inteiro. É um projeto muito bem pensado — a combinação de monitoramento lógico (Zabbix agent, templates, API) com físico (ESP32 + sensores) num painel NOC 3D no Grafana é uma arquitetura elegante e didática. Antes de partir para adaptação, deixa eu resumir o que entendi e já apontar onde normalmente as pessoas tropeçam, para a gente alinhar o rumo.
+
+O que esse projeto ensina (e que vale ouro)
+1. Arquitetura de 3 camadas bem separadas
+
+Coleta (ESP32 → Zabbix via polling + push híbrido; agentes nos servidores)
+
+Orquestração/estado (Zabbix: itens, gatilhos, macros, templates)
+
+Visualização (Grafana com painel custom em JS/Three.js)
+
+Cada camada pode ser substituída sem quebrar as outras. Isso é o que torna adaptável.
+
+2. Padrões que você deve copiar independente do seu projeto
+
+.env + configurar.py idempotente — nada configurado à mão no Zabbix/Grafana. Isso é ouro.
+
+Template reutilizável + macros — trocar limite de temperatura sem mexer em item.
+
+Item mestre + dependentes — uma requisição HTTP a cada 15s, não onze.
+
+Tags efeito nos gatilhos — o front-end reage pelo efeito, não pelo texto do alerta. Desacoplamento perfeito.
+
+Serviço de ações separado (acoes.py) — porque o plugin do Zabbix bloqueia escrita. Lição valiosa: a ponte só lê, quem escreve é outro serviço com menor privilégio.
+
+Receitas por servidor (/opt/acoes/*.sh + acoes.conf) — o botão é o mesmo, a receita é local. Portável para cloud.
+
+Cache TTL do datasource menor que o ciclo de pergunta — detalhe que quase ninguém acerta.
+
+3. Lições "de guerra" documentadas (essa parte é rara e preciosa)
+
+OTA com dois bancos de flash, por que o .bin mesclado apaga Wi-Fi e o OTA não
+
+Histerese no sensor de chuva (analogia da geladeira)
+
+ADC1 só com Wi-Fi no ESP32
+
+millis() zera a cada 49,7 dias
+
+Port forwarding do Docker quebra após reinício → --force-recreate --no-deps
+
+Plugin Grafana precisa GF_PLUGINS_PREINSTALL_SYNC senão trava na primeira subida
+
+Antes de começar, preciso saber de você
+Para eu não te dar um caminho genérico, me responde:
+
+Qual é o seu projeto? (ex.: monitorar uma sala, uma loja, uma fazenda, um home lab, um cliente específico…)
+
+O que você já tem pronto? (Docker? algum servidor? ESP32? Zabbix/Grafana rodando?)
+
+Seu nível atual em: Docker, Zabbix, Grafana, ESP32/PlatformIO, Python? (para eu calibrar o ritmo)
+
+Quer adaptar tudo de uma vez ou fazer em fatias (recomendo fatias: primeiro coleta → depois alerta → depois painel → depois ações)?
+
+Restrições: só Windows? Tem Linux? Vai expor na internet? Orçamento pra hardware?
+
+Minha sugestão de roteiro (fatias)
+Se você topar, proponho esta ordem — cada fatia é testável sozinha, e você só avança quando a anterior funciona:
+
+Fatia	Entrega	Critério de "deu certo"
+0. Base	docker-compose.yml com Zabbix + Grafana + Postgres, .env, healthchecks	Abre :8080 e :3000, loga
+1. Coleta lógica	Um host real (seu PC mesmo) com Zabbix agent, template Linux/Windows	CPU/memória aparecem em Dados recentes
+2. Coleta física	ESP32 com 1 sensor (comece só com DHT11 ou porta)	http://IP/status retorna JSON, item no Zabbix recebe
+3. Configuração por código	configurar.py criando grupo, template, host, macros, gatilhos	Rodar 2× não duplica nada (idempotência)
+4. Alerta	Telegram (ou Discord/e-mail) + 1 gatilho	Desligar o sensor → mensagem chega
+5. Painel	Dashboard Grafana (comece com painéis nativos, não com 3D)	Ver estado ao vivo
+6. Painel NOC 3D	Só depois que 1–5 funcionam	Sala/rack reagem aos dados
+7. Ações	Serviço Python + usuário restrito + 1 ação (ex.: reconhecer)	Botão no painel muda estado no Zabbix, com auditoria
+Por que 3D por último? Porque é a parte mais bonita e a mais fácil de virar armadilha. Se os dados não estão confiáveis, a cena 3D só parece pronta. O README original mesmo deixa claro que a central é "só uma casca" sobre Zabbix.
+
+Duas armadilhas que quero te poupar já
+Não copie o docker-compose.yml inteiro de primeira. Suba só Postgres + Zabbix + Grafana. O resto (gravador, ações, gerador, srv02) entra um por um. Erro em um serviço derruba o diagnóstico dos outros.
+
+Não comece com o painel 3D. Ele depende de grafana/noc/*.js, que depende do plugin Business Text, que depende de dados estáveis do Zabbix. Se algo falha, você não sabe se é Three.js, JSONPath ou datasource. Faça um painel nativo primeiro.
+
+Me conta então: qual é o seu projeto e o que você já tem? A partir daí eu monto o passo 0 concreto — arquivos, comandos, o que abrir, o que deve aparecer na tela — e a gente segue fatia por fatia. Se preferir, já posso te dar o docker-compose.yml mínimo e comentado para o seu caso. Qual caminho?
+
+O meu projeto é este aqui:
+Entendi seu projeto! 🎯
+Boa — agora tenho o quadro completo. Deixa eu resumir o que você tem e depois apontar como adaptar o README do projeto original ao seu caso, sem perder o que já funciona.
+
+O que você tem hoje (v8.3 monolítica)
+Um sketch Arduino/ESP32 único, muito maduro, com:
+
+Camada	O que já existe	Observação
+Sensores	RFID (MFRC522), PIR, ultrassônico, LDR, porta (reed), DHT22, botão físico, botão de pânico (ISR)	Cobertura física boa — você tem mais sensores que o projeto original
+Atuadores	OLED SSD1306, LED RGB, 2 buzzers, display de estado	Tudo local
+Comunicação	MQTT (PubSubClient) com tópicos de status/ambiente/comando/logs/heartbeat/resposta + LWT + fila store-and-forward offline	Publica em broker.emqx.io
+Segurança	HMAC-SHA256 com chave em NVS, nonce monotônico persistido, anti-replay, token separado para RESET/EMERGÊNCIA, comparação em tempo constante	Muito acima da média
+Confiabilidade	Watchdog (compat. Core 3.x), warm-up, ring buffer de log (100 eventos), intertravamento no DESARMAR, rate-limit em STATUS, respostas de comando	Bastante robusto
+Tempo	RTC DS3231 + NTP com fallback para millis()	3 fontes hierárquicas
+OTA	ArduinoOTA com senha	Já funciona
+Config	NVS (Preferences) para limiares, modo, contadores, cartões autorizados	Persistente
+E não tem (que o projeto original tem):
+
+Zabbix (coleta, gatilhos, macros, templates, ações, Telegram)
+
+Grafana (dashboard, NOC 3D)
+
+Gravação web via navegador (esplorador de placa)
+
+Provisionamento por API (idempotente)
+
+Serviço de ações com controle por papel (Viewer/Editor)
+
+Receitas por servidor (/opt/acoes/*.sh)
+
+Documentação em README estruturado
+
+A boa notícia: sua arquitetura já cabe no modelo do original
+Sua placa fala MQTT, e o Zabbix fala MQTT nativamente (via item MQTT agent). Ou seja:
+
+text
+ESP32 (MQTT) ──▶ broker ──▶ Zabbix (item MQTT agent) ──▶ gatilhos/alertas ──▶ Telegram
+                                     │
+                                     └──▶ Grafana (datasource Zabbix) ──▶ NOC 3D
+Você não precisa reescrever o firmware para HTTP como o projeto original fez. Você só precisa:
+
+Subir Zabbix + Grafana em Docker (copiado do original)
+
+Criar um template Zabbix que consuma seus tópicos MQTT (status, ambiente, logs, resposta, heartbeat)
+
+Configurar Telegram
+
+Fazer o dashboard (comece sem 3D, com painéis nativos)
+
+Só depois partir para o NOC 3D
+
+Isso é uma adaptação muito mais leve do que parece — você não está começando do zero, você está plugando um sistema maduro (seu firmware) numa camada de observabilidade madura (o projeto original).
+
+Antes de eu montar o caminho, preciso decidir 4 coisas com você
+1. Onde vai rodar o broker MQTT?
+Hoje você usa broker.emqx.io (público). Para o laboratório do original (on-premise), o ideal é um Mosquitto local no Docker, porque:
+
+O Zabbix precisa alcançar o broker, e o broker público pode ser lento/bloqueado
+
+Você não quer seus dados de rack circulando num broker público
+
+Fica tudo reproduzível: docker compose up sobe tudo
+
+Pergunta: você tem problema em trocar broker.emqx.io por um Mosquitto local? (É 1 linha no firmware + 1 serviço no compose.)
+
+2. Como o Zabbix vai consumir?
+Duas opções:
+
+Opção	Como	Prós	Contras
+A) MQTT agent no Zabbix	Item mestre MQTT (esp32.status), JSONPath nos dependentes — igual ao original	Reaproveita o template inteiro, efeito das tags, tudo	Precisa de Mosquitto acessível pelo container do Zabbix
+B) Push via Zabbix sender	ESP32 manda Zabbix sender na porta 10051	Funciona como o "push" original, mais rápido	Precisa recompilar o firmware com zabbix_sender, perde HMAC do jeito que está
+Recomendação: A. Seu firmware já publica JSON estruturado em status e ambiente. É plug-and-play. E o "push" urgente (pânico, invasão) já vem pelo MQTT em < 1s — a latência que importa.
+
+3. Você quer manter a autenticação HMAC como está, ou o Zabbix também vai mandar comandos?
+O original usa dois caminhos separados:
+
+Leitura (polling HTTP) — Zabbix busca
+
+Ação (serviço Python separado, com usuário restrito no Zabbix, que assina HMAC)
+
+Você já tem HMAC + nonce. Isso é ouro para a camada de ações do original: o serviço acoes.py pode assinar comandos com a chave HMAC do firmware (que fica no .env, espelhando a NVS). Aí o botão "DESARMAR" no Grafana → serviço Python → publica MQTT com HMAC → ESP32 executa.
+
+Pergunta: você quer que eu já inclua essa ponte HMAC no plano, ou deixamos ações para a fatia final?
+
+4. Wokwi vs. hardware real
+O comentário diz "compatível com Wokwi". Isso muda tudo na prioridade:
+
+Se você está no Wokwi: esqueça OTA, esqueça Docker de gravador, esqueça firewall. O caminho é Wokwi → broker público → Zabbix em Docker no seu PC → Grafana. Muito mais simples.
+
+Se você tem hardware: vale o caminho completo do original (gravador web, OTA, calibração, reserva de IP).
+
+Qual é o caso?
+
+Minha proposta de roadmap (adaptado ao seu caso)
+Assumindo as respostas mais comuns (Wokwi ou hardware + Mosquitto local + MQTT agent), a ordem seria:
+
+Fatia	Entrega	Teste de aceite
+0. Base Docker	docker-compose.yml com Mosquitto + Zabbix + Grafana + Postgres, .env	:8080 e :3000 abrem, Mosquitto recebe
+1. Ponte MQTT	Firmware aponta para Mosquitto local; você vê os tópicos com mosquitto_sub	status e ambiente chegam a cada 30s
+2. Template Zabbix MQTT	Item mestre esp32.status (MQTT agent, JSONPath) + 8–10 dependentes (temp, umid, porta, movimento, distância, modo, estado, contadores, heartbeat)	Dados recentes mostra valores reais
+3. Gatilhos + Telegram	Temperatura, porta aberta, invasão (EMERGENCIA_RACK), sensor DHT perdido, placa offline	Desligar sensor → mensagem no celular
+4. Dashboard simples	Painel Grafana nativo (sem 3D): estado, temp/umid, porta, contadores	Atualiza ao vivo
+5. Configuração por código	configurar.py idempotente (grupo, template, host, macros, Telegram)	Rodar 2× não duplica
+6. NOC 3D	Adaptar noc/ do original: rack reage ao seu estado (SEGURO, EMERGENCIA_RACK, DESARMADO)	Sala 3D reage
+7. Ações	acoes.py + HMAC + usuário restrito; botões "Reconhecer", "Desarmar emergência", "Reset contadores"	Botão no Grafana muda estado no ESP32
+Já posso te dar o passo 0 agora
+Independente das respostas, o fatia 0 é o mesmo. Se você me disser "vamos", eu te entrego:
+
+docker-compose.yml mínimo e comentado (Mosquitto + Postgres + Zabbix server/web + Grafana), com healthchecks e volumes
+
+.env.example com todas as variáveis
+
+mosquitto/config/mosquitto.conf (com autenticação opcional e listener 1883)
+
+Comando para testar o broker: docker exec -it mosquitto mosquitto_sub -t '#' -v
+
+Checklist do que deve aparecer na tela
+
+E aí, me responde as 4 perguntas?
+
+Broker local (Mosquitto) — pode trocar?
+
+Zabbix via MQTT agent (recomendado) ou sender?
+
+Incluir a ponte HMAC das ações desde já ou no final?
+
+Wokwi, hardware real, ou os dois?
+
+Com isso eu já monto o passo 0 completo, e a gente segue fatia por fatia como combinado. Qual é?
+
+As respostas:
+1. O ideal é um Mosquitto local no Docker
+2. Recomendação: A. Seu firmware já publica JSON estruturado em status e ambiente. É plug-and-play. E o "push" urgente (pânico, invasão) já vem pelo MQTT em < 1s — a latência que importa.
+3. Deixa HMAC para o final
+4. Os dois, mas foca primeiro no Wokwi
+Encontrados 15 resultados
+Perfeito, respostas claras. Vamos ao Passo 0, com foco no Wokwi primeiro.
+
+Antes de te entregar os arquivos, preciso te avisar de uma limitação importante do Wokwi que muda o plano:
+
+O Wokwi não alcança o localhost do seu PC. A rede Wokwi-GUEST só fala com a internet pública. Isso significa que o ESP32 simulado não vai conseguir publicar no Mosquitto que roda no seu Docker local (porta 1883).
+
+Isso nos deixa com duas opções realistas para a fase Wokwi:
+
+Opção	Como funciona	Prós	Contras
+A) Broker público durante o Wokwi	Firmware aponta para broker.emqx.io (como já está). Seu PC roda um cliente MQTT que assina esses tópicos e repassa ao Mosquitto local, ou o Zabbix lê direto do broker público.	Funciona já	Expõe dados do rack num broker público; latência e bloqueios eventuais
+B) Bridge MQTT no seu PC	Um container Mosquitto faz bridge: assina no broker público e republica no local. O Zabbix lê só o local.	Mantém o Zabbix isolado; dados saem do público só no PC	Um passo a mais de configuração
+Minha recomendação para o Wokwi: Opção B. Você mantém o firmware exatamente como está (broker público), e o Mosquitto local vira uma "ponte" que puxa os tópicos do broker público para dentro da sua rede Docker. Quando você migrar para hardware real, só troca o endereço do broker no firmware e remove a bridge.
+
+Passo 0 — Arquivos prontos
+Vou te entregar a estrutura de pastas e os arquivos para você criar. Comece com apenas 3 serviços: mosquitto, postgres, zabbix-server, zabbix-web e grafana. Nada mais.
+
+Estrutura
+text
+rack-monitor/
+├── docker-compose.yml
+├── .env.example
+├── .env                    (você cria, não versiona)
+├── mosquitto/
+│   └── config/
+│       ├── mosquitto.conf
+│       └── bridge.conf     (opcional, para a ponte)
+└── zabbix/
+    └── (vazio por enquanto — o configurar.py entra na fatia 2)
+1. docker-compose.yml
+yaml
+# docker-compose.yml — base para o Rack Monitor
+# Serviços mínimos: broker MQTT + Zabbix + Grafana + Postgres
+
+services:
+  # ---------- Broker MQTT local ----------
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: rack-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"          # MQTT
+      - "9001:9001"          # WebSocket (opcional, útil para debug no navegador)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - rack-net
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/#' -C 1 -W 2 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ---------- Banco do Zabbix ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: rack-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rack-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Zabbix Server ----------
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    container_name: rack-zabbix-server
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "10051:10051"        # Zabbix trapper/sender
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rack-net
+
+  # ---------- Zabbix Web (interface + API) ----------
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
+    container_name: rack-zabbix-web
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PHP_TZ: America/Sao_Paulo
+    ports:
+      - "8080:8080"
+    depends_on:
+      - zabbix-server
+      - postgres
+    networks:
+      - rack-net
+
+  # ---------- Grafana ----------
+  grafana:
+    image: grafana/grafana:13.2.5
+    container_name: rack-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: ""   # plugins entram na fatia 3
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - rack-net
+
+networks:
+  rack-net:
+    driver: bridge
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  postgres_data:
+  grafana_data:
+2. .env.example (copie para .env e preencha)
+bash
+# ---------- Banco do Zabbix ----------
+POSTGRES_USER=zabbix
+POSTGRES_PASSWORD=troque_esta_senha_forte
+POSTGRES_DB=zabbix
+
+# ---------- Grafana ----------
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=troque_esta_senha_forte
+
+# ---------- Broker MQTT ----------
+# Deixe vazio na primeira subida (anônimo local).
+# Preencha quando for adicionar autenticação.
+MQTT_USER=
+MQTT_PASSWORD=
+3. mosquitto/config/mosquitto.conf
+conf
+# Mosquitto local — sem TLS por enquanto (Wokwi/laboratório)
+# Quando migrar para hardware real, adicione password_file e/ou TLS.
+
+listener 1883
+allow_anonymous true
+
+# WebSocket (útil para testar pelo navegador em localhost:9001)
+listener 9001
+protocol websockets
+
+persistence true
+persistence_location /mosquitto/data/
+
+log_dest file /mosquitto/log/mosquitto.log
+log_type error
+log_type warning
+log_type notice
+Nota: allow_anonymous true é aceitável para laboratório local. Na fatia 1 ou 2, quando o Zabbix começar a ler, a gente troca por autenticação com senha. O firmware do Wokwi vai continuar no broker público de qualquer forma.
+
+4. (Opcional — para a ponte do broker público ao local)
+Se quiser que o Mosquitto local puxe os tópicos do broker.emqx.io (onde o Wokwi publica), crie mosquitto/config/bridge.conf e inclua no mosquitto.conf com include_dir /mosquitto/config/conf.d ou include /mosquitto/config/bridge.conf. Mas não faça isso ainda — primeiro valide a base. Deixamos a ponte para a fatia 1.
+
+Como testar o Passo 0
+No terminal, na pasta rack-monitor/:
+
+bash
+# 1. Copie o .env
+cp .env.example .env
+# edite as senhas no .env
+
+# 2. Suba tudo
+docker compose up -d
+
+# 3. Veja o estado (tudo deve ficar "healthy" ou "running")
+docker compose ps
+
+# 4. Teste o broker local (publica e assina na mesma máquina)
+docker compose exec mosquitto mosquitto_pub -h localhost -t teste/rack -m "ola"
+docker compose exec mosquitto mosquitto_sub -h localhost -t teste/rack -C 1
+# deve imprimir: ola
+Teste de aceite final do Passo 0:
+
+O que verificar	Onde	Deve aparecer
+Zabbix abre	http://localhost:8080	Tela de login Admin / zabbix (padrão)
+Grafana abre	http://localhost:3000	Login com as credenciais do .env
+Broker responde	comando acima	ola
+Se os três abrirem, o Passo 0 está concluído. Aí partimos para a Fatia 1: fazer o Mosquitto local "enxergar" os tópicos do seu ESP32 no Wokwi (via bridge do broker público) e validar com mosquitto_sub que os JSONs status e ambiente chegam.
+
+Próximo passo: crie os arquivos acima, suba o compose e me diga o resultado do docker compose ps e do teste do Mosquitto. Se algo falhar (porta ocupada, senha do Postgres, healthcheck do Mosquitto), me manda o erro que a gente depura junto.
+
+Quando estiver verde, eu te passo a Fatia 1 completa: bridge.conf do Mosquitto + comando para validar que o JSON do seu rack_monitor_ABCD1234/status está chegando no broker local. Bora?
+
+Excelente!!
+Quero começar tudo numa pasta nova monitoramento-cpd.
+Me ajude a criar toda a estrutura de pastas e arquivos.
+Vamos criar a estrutura completa do monitoramento-cpd 🚀
+Abaixo está o Passo 0 completo — estrutura de pastas + todos os arquivos do compose base. Você vai criar tudo do zero, numa pasta nova, sem depender do projeto original ainda.
+
+Antes de tudo, uma decisão importante sobre a ponte do broker:
+
+Como o Wokwi não alcança o localhost do seu PC, vou já deixar a bridge MQTT pronta desde o Passo 0 (é barato: ~15 linhas de config). Assim, na Fatia 1, você não precisa reconfigurar nada — só validar. A bridge puxa rack_monitor_ABCD1234/# do broker.emqx.io para o Mosquitto local.
+
+Também vou isolar a bridge num arquivo separado e deixá-la desligada por padrão (via include comentado). Você liga com uma linha quando quiser. Isso evita que, se o broker público estiver fora, o Mosquitto local fique tentando reconectar sem parar no Passo 0.
+
+1. Árvore de pastas
+text
+monitoramento-cpd/
+├── .env.example
+├── .env                         ← você cria a partir do .env.example (não versiona)
+├── .gitignore
+├── .dockerignore
+├── README.md                    ← placeholder por enquanto
+├── docker-compose.yml
+├── mosquitto/
+│   └── config/
+│       ├── mosquitto.conf       ← configuração principal
+│       ├── bridge.conf.example  ← modelo da ponte (NÃO incluído por padrão)
+│       └── conf.d/
+│           └── .gitkeep
+├── zabbix/
+│   └── .gitkeep
+├── grafana/
+│   └── .gitkeep
+└── docs/
+    └── 00-plano.md              ← registro do nosso roadmap (opcional, mas útil)
+Por que essas pastas vazias (zabbix/, grafana/)? Para você já enxergar onde cada fatia vai morar. Não coloque nada dentro delas ainda — só o .gitkeep para o Git não "engolir" a pasta.
+
+2. .gitignore
+gitignore
+# Segredos e configuração local
+.env
+*.local
+
+# Dados dos containers (mesmo que estejam em volumes nomeados, por segurança)
+data/
+logs/
+
+# IDE / SO
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Mosquitto (log/dados que possam vazar para a pasta se você mudar volume)
+mosquitto/data/
+mosquitto/log/
+3. .dockerignore
+dockerignore
+.git
+.gitignore
+.env
+*.md
+docs/
+.vscode/
+4. docker-compose.yml
+yaml
+# monitoramento-cpd/docker-compose.yml
+# Passo 0 — base: Mosquitto + Zabbix (server/web) + Grafana + Postgres
+# Todos os serviços na rede "cpd-net". Os dados vivem em volumes nomeados.
+
+services:
+  # ---------------------------------------------------------------
+  # Broker MQTT local
+  # O ESP32 (Wokwi ou real) publica no broker configurado no firmware.
+  # Este broker é o ponto de entrada para o Zabbix ler os tópicos.
+  # ---------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: cpd-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT
+      - "9001:9001"     # MQTT sobre WebSocket (debug no navegador, opcional)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - cpd-net
+    healthcheck:
+      # Testa se o broker responde a um SUB vazio em $SYS/broker/version
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/broker/version' -C 1 -W 2 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------
+  # Banco de dados do Zabbix
+  # ---------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: cpd-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cpd-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------
+  # Zabbix Server — coleta MQTT, avalia gatilhos, dispara ações
+  # ---------------------------------------------------------------
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    container_name: cpd-zabbix-server
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "10051:10051"   # trapper (sender/active agent)
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cpd-net
+    # Na fatia 2, adicionaremos aqui o mount do template e do configurar.py
+    # (ou rodaremos o configurar.py de fora, via host — decidiremos depois)
+
+  # ---------------------------------------------------------------
+  # Zabbix Web — interface + API
+  # ---------------------------------------------------------------
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
+    container_name: cpd-zabbix-web
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PHP_TZ: America/Sao_Paulo
+    ports:
+      - "8080:8080"
+    depends_on:
+      - zabbix-server
+      - postgres
+    networks:
+      - cpd-net
+
+  # ---------------------------------------------------------------
+  # Grafana — visualização
+  # ---------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:13.2.5
+    container_name: cpd-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # Na fatia 4 (dashboard) adicionaremos:
+      # - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - cpd-net
+
+networks:
+  cpd-net:
+    driver: bridge
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  postgres_data:
+  grafana_data:
+5. .env.example (copie para .env e preencha)
+bash
+# ==========================================================
+# monitoramento-cpd — variáveis de ambiente
+# Copie este arquivo para ".env" e preencha os valores.
+# O .env NÃO vai para o Git.
+# ==========================================================
+
+# ---------- Banco do Zabbix ----------
+POSTGRES_USER=zabbix
+POSTGRES_PASSWORD=troque_esta_senha_forte_123
+POSTGRES_DB=zabbix
+
+# ---------- Grafana ----------
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=troque_esta_senha_forte_456
+
+# ---------- Broker MQTT ----------
+# Deixe em branco nesta primeira subida (allow_anonymous = true).
+# Preencha depois, quando ativarmos autenticação.
+MQTT_USER=
+MQTT_PASSWORD=
+Regra de bolso: as senhas aqui são só para o laboratório local. Não reutilize nenhuma senha real. Se um dia expor essa stack na rede, troque tudo e ative autenticação no Mosquitto.
+
+6. mosquitto/config/mosquitto.conf
+conf
+# monitoramento-cpd/mosquitto/config/mosquitto.conf
+# Configuração principal do broker local.
+# Laboratório: anônimo habilitado, sem TLS. Endurecer antes de expor.
+
+# ---------------- Listeners ----------------
+listener 1883
+allow_anonymous true
+
+listener 9001
+protocol websockets
+
+# ---------------- Persistência ----------------
+persistence true
+persistence_location /mosquitto/data/
+
+# ---------------- Logs ----------------
+log_dest file /mosquitto/log/mosquitto.log
+log_type error
+log_type warning
+log_type notice
+
+# ---------------- Bridge (opcional) ----------------
+# Para ligar a ponte com o broker público (Wokwi),
+# descomente a linha abaixo e copie bridge.conf.example para bridge.conf:
+#
+# include /mosquitto/config/bridge.conf
+7. mosquitto/config/bridge.conf.example
+Este arquivo não está ativo. Ele é o modelo para a Fatia 1. Deixe aqui pronto.
+
+conf
+# monitoramento-cpd/mosquitto/config/bridge.conf.example
+# Modelo de ponte: puxa os tópicos do ESP32 do broker público para o local.
+#
+# Para ativar:
+#   1. cp mosquitto/config/bridge.conf.example mosquitto/config/bridge.conf
+#   2. descomentar "include /mosquitto/config/bridge.conf" no mosquitto.conf
+#   3. docker compose restart mosquitto
+#
+# Os tópicos ficam disponíveis no broker local com prefixo "publico/".
+
+connection ponte-emqx
+address broker.emqx.io:1883
+remote_username
+remote_password
+clientid cpd-bridge-emqx
+
+# Assina os tópicos do rack no broker público
+topic rack_monitor_ABCD1234/status      in 1
+topic rack_monitor_ABCD1234/ambiente    in 1
+topic rack_monitor_ABCD1234/logs        in 1
+topic rack_monitor_ABCD1234/heartbeat   in 1
+topic rack_monitor_ABCD1234/resposta    in 1
+topic rack_monitor_ABCD1234/status/lwt  in 1
+
+# Reprefixa os tópicos no broker local: publico/rack_monitor_ABCD1234/...
+# Assim você distingue o que veio de fora do que é interno.
+local_prefix publico/
+
+# Não repassar de volta ao broker público
+try_private true
+notifications false
+cleansession true
+start_type automatic
+restart_timeout 10
+Por que local_prefix publico/? Para você nunca confundir "mensagem que nasceu no meu PC" com "mensagem que veio do Wokwi". O Zabbix vai assinar publico/rack_monitor_ABCD1234/status.
+
+8. .gitkeeps (arquivos vazios, só para o Git preservar as pastas)
+text
+monitoramento-cpd/mosquitto/config/conf.d/.gitkeep   (vazio)
+monitoramento-cpd/zabbix/.gitkeep                    (vazio)
+monitoramento-cpd/grafana/.gitkeep                   (vazio)
+9. docs/00-plano.md (registro do roadmap — opcional, mas recomendo)
+markdown
+# Plano — monitoramento-cpd
+
+Adaptação do projeto "Monitoramento lógico e físico de sala de servidores"
+para o firmware RackMonitor v8.3 (ESP32 monolítico, MQTT + HMAC).
+
+## Decisões
+- Broker: Mosquitto local no Docker
+- Ingestão no Zabbix: MQTT agent (não sender) — reaproveita o JSON do firmware
+- Ações (HMAC): deixadas para a fatia final
+- Wokwi primeiro; hardware real depois
+
+## Fatias
+- [x] 0. Base Docker (Mosquitto, Postgres, Zabbix server/web, Grafana)
+- [ ] 1. Ponte MQTT: Wokwi → broker público → Mosquitto local
+- [ ] 2. Template Zabbix MQTT (item mestre + dependentes)
+- [ ] 3. Gatilhos + Telegram
+- [ ] 4. Dashboard simples (painéis nativos)
+- [ ] 5. Configuração por código (configurar.py idempotente)
+- [ ] 6. NOC 3D
+- [ ] 7. Ações (HMAC + serviço Python + botões no Grafana)
+
+## Convenções
+- Nomes de container: prefixo `cpd-`
+- Rede Docker: `cpd-net`
+- Tópicos de fora chegam no broker local com prefixo `publico/`
+10. README.md (placeholder)
+markdown
+# monitoramento-cpd
+
+Laboratório de monitoramento de CPD com ESP32 (RackMonitor v8.3) + Zabbix + Grafana.
+
+> Documentação completa entra ao final da fatia 5.
+> Ver `docs/00-plano.md` para o roadmap atual.
+Como criar tudo (no seu terminal)
+Windows PowerShell:
+
+powershell
+cd $HOME
+mkdir monitoramento-cpd
+cd monitoramento-cpd
+
+# Pastas
+New-Item -ItemType Directory -Force mosquitto\config\conf.d | Out-Null
+New-Item -ItemType Directory -Force zabbix | Out-Null
+New-Item -ItemType Directory -Force grafana | Out-Null
+New-Item -ItemType Directory -Force docs | Out-Null
+
+# .gitkeep
+New-Item -ItemType File mosquitto\config\conf.d\.gitkeep | Out-Null
+New-Item -ItemType File zabbix\.gitkeep | Out-Null
+New-Item -ItemType File grafana\.gitkeep | Out-Null
+
+# Arquivos vazios para você colar o conteúdo
+"docker-compose.yml",".env.example",".gitignore",".dockerignore","README.md",
+"mosquitto\config\mosquitto.conf","mosquitto\config\bridge.conf.example",
+"docs\00-plano.md" | ForEach-Object { New-Item -ItemType File -Force $_ | Out-Null }
+Linux/macOS:
+
+bash
+mkdir -p ~/monitoramento-cpd/{mosquitto/config/conf.d,zabbix,grafana,docs}
+cd ~/monitoramento-cpd
+touch mosquitto/config/conf.d/.gitkeep zabbix/.gitkeep grafana/.gitkeep
+touch docker-compose.yml .env.example .gitignore .dockerignore README.md \
+      mosquitto/config/mosquitto.conf mosquitto/config/bridge.conf.example \
+      docs/00-plano.md
+Depois cole o conteúdo de cada arquivo (a partir da seção 2 acima) nos arquivos correspondentes.
+
+Teste de aceite do Passo 0
+powershell
+cd monitoramento-cpd
+
+# 1. Criar o .env a partir do exemplo
+Copy-Item .env.example .env
+
+# 2. (recomendado) editar as senhas no .env — abra no Notepad:
+notepad .env
+
+# 3. Subir
+docker compose up -d
+
+# 4. Estado
+docker compose ps
+Você deve ver, no docker compose ps:
+
+cpd-mosquitto — running (healthy)
+
+cpd-postgres — running (healthy)
+
+cpd-zabbix-server — running
+
+cpd-zabbix-web — running
+
+cpd-grafana — running
+
+E na tela:
+
+Endereço	Deve aparecer
+http://localhost:8080	Login do Zabbix (Admin / zabbix)
+http://localhost:3000	Login do Grafana (usuário/senha do .env)
+Comando abaixo	ola
+Teste do broker:
+
+powershell
+docker compose exec mosquitto mosquitto_pub -h 127.0.0.1 -t teste/cpd -m "ola"
+docker compose exec mosquitto mosquitto_sub -h 127.0.0.1 -t teste/cpd -C 1 -W 3
+Se algo der errado
+Os erros mais comuns neste Passo 0:
+
+Sintoma	Causa	Correção
+port is already allocated na 8080/3000/1883	Outro serviço já usa a porta	Pare o outro serviço ou mude o mapeamento (ex.: "8081:8080")
+cpd-postgres fica unhealthy	Senha com caractere especial que o shell comeu	Coloque a senha entre aspas no .env: POSTGRES_PASSWORD="minha#senha"
+cpd-mosquitto reinicia em loop	Erro de sintaxe no mosquitto.conf	docker compose logs mosquitto
+Zabbix web demora a abrir	Primeira subida inicializa o schema	Aguarde 1–2 min e recarregue
+Se travar em algum, me manda a saída de docker compose ps e do log do serviço problemático (docker compose logs <serviço>) que a gente resolve.
+
+Quando o Passo 0 estiver verde
+Me avisa e partimos para a Fatia 1:
+
+Copiar bridge.conf.example → bridge.conf
+
+Descomentar o include no mosquitto.conf
+
+docker compose restart mosquitto
+
+Rodar docker compose exec mosquitto mosquitto_sub -t 'publico/#' -v enquanto o Wokwi está rodando
+
+Ver os JSONs publico/rack_monitor_ABCD1234/status e .../ambiente chegando a cada 30s
+
+Se isso funcionar, a Fatia 1 está fechada — e você já terá provado que a ponte Wokwi → Mosquitto local funciona, sem tocar em Zabbix nem Grafana.
+
+Bora criar a pasta? Se der qualquer erro no up -d, cola aqui a saída que eu te ajudo a depurar. Quando estiver tudo de pé, seguimos. 💪
+
+Estou usado um mac mini m4, pode gerar um comando para a criação destes arquivos e pastas?
+Perfeito — Mac mini M4 (Apple Silicon) 🍎
+Ótima notícia: tudo o que montamos funciona nativamente no M4. As imagens que escolhemos (postgres:16-alpine, zabbix/*:alpine-7.0-latest, eclipse-mosquitto:2.0, grafana/grafana:13.2.5) têm build arm64. Não precisa de Rosetta nem de platform: no compose.
+
+Abaixo está um script único que cria toda a estrutura e já escreve o conteúdo de todos os arquivos de uma vez. Ele usa heredocs com <<'EOF' (aspas simples) para que $VAR, crases e afins não sejam interpolados pelo shell — crítico porque seus arquivos têm ${POSTGRES_USER}, $$SYS, etc.
+
+Antes de rodar: pré-requisitos no Mac
+bash
+# 1. Docker Desktop para Mac (Apple Silicon)
+#    Baixe em https://www.docker.com/products/docker-desktop/
+#    Depois de instalar, abra o app e espere o ícone da baleia ficar estável.
+
+# 2. Confirme que o Docker responde
+docker version
+docker compose version    # precisa ser v2 (comando "docker compose", não "docker-compose")
+
+# 3. Confirme a arquitetura
+uname -m                  # deve imprimir: arm64
+Se docker compose version der erro, você tem a v1 antiga. Instale a v2 (vem com o Docker Desktop atual) ou rode brew install docker-compose e use docker-compose no lugar.
+

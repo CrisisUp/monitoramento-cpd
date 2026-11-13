@@ -1,0 +1,22 @@
+# Segredos e configuração local
+.env
+*.local
+
+# Dados dos containers
+data/
+logs/
+
+# IDE / SO
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Mosquitto (se um dia mudar o volume para pasta local)
+mosquitto/data/
+mosquitto/log/

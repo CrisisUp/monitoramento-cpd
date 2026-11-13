@@ -1,0 +1,1005 @@
+Vamos resolver de vez.
+
+A solução definitiva: selecionar o item pelo Key técnico
+O plugin do Zabbix aceita dois modos de filtro:
+
+filter — busca por nome visível (o que estamos usando, e que está falhando).
+
+item — busca pelo Key técnico (ex.: esp32.temp, esp32.modo). Este é mais confiável e não depende do nome visível.
+
+Vamos trocar todos os filtros para usar o Key técnico. Os keys que você já tem no Zabbix são:
+
+Item	Key técnico
+Temperatura	esp32.temp
+Umidade	esp32.umid
+Modo	esp32.modo
+Estado	esp32.estado
+Porta Aberta	esp32.porta
+Distância	esp32.distancia
+Invasões	esp32.invasoes
+Ambiente	esp32.ambiente
+Passo 1 — Substituir o JSON do dashboard
+Cole este novo cpd-dashboard.json (substitui tudo o que está lá):
+
+bash
+cat > ~/Desktop/monitoramento-cpd/grafana/dashboards/cpd-dashboard.json << 'EOF'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 28 },
+              { "color": "red", "value": 32 }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0",
+          "refId": "A",
+          "item": { "key": "esp32.temp" }
+        }
+      ],
+      "title": "Temperatura",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 65 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0",
+          "refId": "A",
+          "item": { "key": "esp32.umid" }
+        }
+      ],
+      "title": "Umidade",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "options": {
+                "ARMADO": { "color": "blue", "index": 0 },
+                "DESARMADO": { "color": "orange", "index": 1 }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0",
+          "refId": "A",
+          "item": { "key": "esp32.modo" }
+        }
+      ],
+      "title": "Modo",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "options": {
+                "NORMAL": { "color": "green", "index": 0 },
+                "AVISO SALA": { "color": "yellow", "index": 1 },
+                "APROXIMACAO RACK": { "color": "orange", "index": 2 },
+                "EMERGENCIA RACK": { "color": "red", "index": 3 },
+                "INVASAO SALA": { "color": "red", "index": 4 },
+                "ACESSO RFID": { "color": "purple", "index": 5 }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0",
+          "refId": "A",
+          "item": { "key": "esp32.estado" }
+        }
+      ],
+      "title": "Estado",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0",
+          "refId": "A",
+          "item": { "key": "esp32.temp" }
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix" },
+          "queryType": "0",
+          "refId": "B",
+          "item": { "key": "esp32.umid" }
+        }
+      ],
+      "title": "Temperatura e Umidade (30 min)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cpd"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CPD Dashboard",
+  "uid": "cpd-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
+EOF
+Passo 2 — Desligar allowUiUpdates (para o JSON ser a fonte da verdade)
+Edite o grafana/provisioning/dashboards/default.yaml:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/grafana/provisioning/dashboards/default.yaml
+Troque:
+
+yaml
+allowUiUpdates: true
+Por:
+
+yaml
+allowUiUpdates: false
+Salve.
+
+Passo 3 — Apagar o dashboard do banco (forçar releitura)
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart grafana
+Depois, na interface do Grafana:
+
+Menu: Dashboards → CPD → CPD Dashboard
+
+Clique no ícone de três pontinhos (⋯) no topo → Delete
+
+Confirme
+
+Aguarde 30s e recarregue a página (F5). O Grafana vai reler o JSON e recriar o dashboard do zero, com os filtros por key técnico.
+
+Passo 4 — Verificar
+O que você deve ver:
+
+Painel	Esperado
+Temperatura	24 °C
+Umidade	40 %
+Modo	ARMADO (fundo azul)
+Estado	NORMAL (fundo verde)
+Gráfico	Duas linhas
+Se ainda der "No data" no Modo ou Estado
+Esses itens retornam texto (ARMADO, NORMAL), e o painel stat do Grafana às vezes tem dificuldade com texto puro. Se isso acontecer:
+
+Clique no painel → Edit
+
+No painel direito, em Value options, troque Fields de Numeric Fields para All Fields
+
+Save
+
+Faça isso só no Modo e no Estado. Temperatura e Umidade ficam Numeric Fields (é número).
+
+Me diga:
+
+Os 5 painéis apareceram corretos após esse JSON + delete + restart?
+
+Se Modo/Estado continuarem "No data", você ajustou o Fields para All Fields?
+
+Com o dashboard 100% funcionando, fechamos a Fatia 4 e partimos para o Telegram. 🚀
+
+Podemos pular o Telegram?
+🤔 Podemos pular o Telegram. Mas deixa eu te dar o contexto antes.
+Você está livre para pular a Fatia 3 (Telegram) — não há nenhuma dependência técnica entre ela e o resto. Mas há dois motivos para eu te alertar antes de decidir:
+
+O que você perde ao pular o Telegram
+Você não terá alertas. O Zabbix vai coletar dados para sempre, mas se a porta abrir às 3h da manhã, ninguém vai saber. O Grafana só mostra quando alguém olha.
+
+O "Ciclo do Monitoramento" fica incompleto. Coletar sem alertar é meio-caminho. Você tem a base sólida, mas falta a "reação".
+
+O que você ganha ao pular
+Pode ir direto para a Fatia 5 (configuração via IaC), que é mais "engenharia" e menos "setup externo". Combina com o que você gostou de fazer.
+
+Pode ir direto para a Fatia 6 (NOC 3D), que é o visual mais impressionante do projeto.
+
+Pode ir direto para a Fatia 7 (Ações HMAC), que é a parte mais avançada e técnica.
+
+⚠️ Um detalhe importante
+A Fatia 3 (Telegram) é independente das outras. Se você quiser voltar nela depois da Fatia 5, 6 ou 7, funciona perfeitamente. O único "porém" é que a Fatia 7 (Ações) depende do serviço Python acoes.py, que é uma infraestrutura parecida com o que faríamos no Telegram (envio de mensagem via API). Fazer o Telegram antes da 7 é mais "natural" no fluxo de aprendizado, mas não é obrigatório.
+
+Minha recomendação honesta
+Vou ser direto: eu recomendaria fazer o Telegram sim, mas de forma muito rápida. Ele tem o menor esforço de todas as fatias (30 minutos), o maior retorno emocional ("meu celular apitou!") e prepara você para a Fatia 7 (mesma arquitetura: script Python + API + token).
+
+Mas se você realmente quer pular, aqui estão as 3 rotas possíveis (escolha uma):
+
+Rota A — Pular Telegram, ir para Fatia 5 (IaC do Zabbix)
+Você aprende a recriar o Zabbix do zero com um script (configurar_zabbix.py idempotente).
+
+É a fatia mais "espelho" da sua preferência por código.
+
+~40 min.
+
+Rota B — Pular Telegram, ir para Fatia 6 (NOC 3D)
+Você vê a sala 3D do CPD reagindo aos dados do Wokwi em tempo real.
+
+É a parte mais impressionante visualmente.
+
+~2h (mais longa, mas recompensadora).
+
+Rota C — Pular Telegram, ir direto para Fatia 7 (Ações HMAC)
+Botões no Grafana que mudam o estado do ESP32.
+
+Depende de toda a base (0, 1, 2, 4) mas não do Telegram.
+
+~1h30.
+
+O que eu sugiro para não "perder" a Fatia 3
+Se você pular, anote no 00-plano.md:
+
+markdown
+- [~] 3. Gatilhos + Telegram (adiado — voltar depois)
+- [x] 4. Dashboard simples (concluída via IaC)
+Assim, daqui a 6 meses você sabe que existe uma fatia pendente e o motivo.
+
+Me diga:
+
+Qual rota você prefere (A, B ou C)?
+
+Confirmou que todos os 5 painéis do Grafana estão funcionando? (Se ainda tiver algum "No data", a gente resolve antes de avançar.)
+
+Assim que você escolher, eu te passo o passo a passo completo da fatia escolhida, já com a abordagem via código (se possível). 🚀
+
+Fatia 5
+🚀 Fatia 5 — Configuração do Zabbix 100% via Código (IaC)
+Excelente escolha. Vamos transformar tudo o que você fez na interface do Zabbix (host, itens, templates) em um único script Python que cria tudo do zero, de forma idempotente (pode rodar 100 vezes que não duplica).
+
+Isso é o que separa um laboratório de um ambiente de produção real.
+
+O que vamos construir
+Um script configurar_zabbix.py que, a partir do .env, cria automaticamente:
+
+Grupo de hosts (CPD)
+
+Host (esp32-cpd com nome visível Rack CPD)
+
+Item Mestre (mqtt.status, tipo External check)
+
+9 itens dependentes (Temperatura, Umidade, Porta, Modo, Estado, Distância, Invasões, Ambiente, Uptime)
+
+Macros (variáveis configuráveis: {$TEMP.ALERTA}, etc.)
+
+Template exportável (para reutilizar em outra sala)
+
+Nota: Os gatilhos (triggers) entram na Fatia 3 (que você pulou). Por enquanto, o script cria a estrutura de coleta.
+
+Passo 1 — Entender a estrutura do script
+O script usará a API do Zabbix (a mesma que usamos no configurar_zabbix.py anterior). A diferença é que agora ele será idempotente: antes de criar, ele verifica se já existe e, se sim, atualiza.
+
+O fluxo será:
+
+text
+Login → Verifica Grupo → Cria/Atualiza
+     → Verifica Host → Cria/Atualiza
+     → Verifica Item Mestre → Cria/Atualiza
+     → Para cada item dependente → Verifica → Cria/Atualiza
+     → Exporta Template YAML
+     → Logout
+Passo 2 — Criar o arquivo configurar_zabbix.py
+Crie o arquivo na raiz do projeto:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/configurar_zabbix.py << 'PYEOF'
+#!/usr/bin/env python3
+"""
+configurar_zabbix.py — Infraestrutura como Código (IaC) para o Zabbix.
+
+Cria/atualiza toda a estrutura de monitoramento do CPD no Zabbix via API.
+Idempotente: pode rodar quantas vezes quiser sem duplicar.
+
+Uso:
+    source .venv/bin/activate
+    python configurar_zabbix.py
+"""
+
+import os
+import sys
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080")
+ZABBIX_USER = os.getenv("ZABBIX_USER", "Admin")
+ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD", "zabbix")
+API_URL = f"{ZABBIX_URL}/api_jsonrpc.php"
+
+# Configurações do ambiente (podem vir do .env)
+HOST_NAME = os.getenv("ESP32_HOST_NAME", "esp32-cpd")
+HOST_VISIBLE = os.getenv("ESP32_HOST_VISIBLE", "Rack CPD")
+HOST_GROUP = os.getenv("ESP32_HOST_GROUP", "CPD")
+MQTT_BROKER = os.getenv("MQTT_BROKER_HOST", "cpd-mosquitto")
+MQTT_PORT = os.getenv("MQTT_BROKER_PORT", "1883")
+MQTT_TOPIC_BASE = os.getenv("MQTT_TOPIC_BASE", "publico/rack_monitor_ABCD1234")
+
+# Item mestre (o script externo que já criamos no Dockerfile)
+MASTER_KEY = "mqtt_status.sh"
+
+
+# ============================================================
+# CLIENTE DA API
+# ============================================================
+class ZabbixAPI:
+    def __init__(self, url, user, password):
+        self.url = url
+        self.user = user
+        self.password = password
+        self.auth = None
+        self.req_id = 0
+
+    def call(self, method, params=None):
+        self.req_id += 1
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+            "id": self.req_id,
+        }
+        if self.auth:
+            payload["auth"] = self.auth
+
+        r = requests.post(self.url, json=payload, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+
+        if "error" in data:
+            err = data["error"]
+            raise RuntimeError(
+                f"API {method} falhou: [{err['code']}] {err['message']} — {err.get('data', '')}"
+            )
+        return data["result"]
+
+    def login(self):
+        self.auth = self.call("user.login", {
+            "username": self.user,
+            "password": self.password,
+        })
+        return self.auth
+
+    def logout(self):
+        if self.auth:
+            self.call("user.logout", {})
+            self.auth = None
+
+
+# ============================================================
+# HELPERS DE IDEMPOTÊNCIA
+# ============================================================
+def upsert_group(api, name):
+    """Cria ou retorna o grupo de hosts."""
+    existing = api.call("hostgroup.get", {"filter": {"name": [name]}})
+    if existing:
+        print(f"  [=] Grupo '{name}' já existe (ID {existing[0]['groupid']})")
+        return existing[0]["groupid"]
+    result = api.call("hostgroup.create", {"name": name})
+    gid = result["groupids"][0]
+    print(f"  [+] Grupo '{name}' criado (ID {gid})")
+    return gid
+
+
+def upsert_host(api, host, visible, group_id):
+    """Cria ou atualiza o host."""
+    existing = api.call("host.get", {"filter": {"host": [host]}})
+    if existing:
+        hid = existing[0]["hostid"]
+        print(f"  [=] Host '{host}' já existe (ID {hid})")
+        # Atualiza nome visível e grupos
+        api.call("host.update", {
+            "hostid": hid,
+            "name": visible,
+            "groups": [{"groupid": group_id}],
+        })
+        return hid
+
+    result = api.call("host.create", {
+        "host": host,
+        "name": visible,
+        "groups": [{"groupid": group_id}],
+        "interfaces": [],
+        "inventory_mode": -1,
+    })
+    hid = result["hostids"][0]
+    print(f"  [+] Host '{host}' criado (ID {hid})")
+    return hid
+
+
+def upsert_master_item(api, host_id):
+    """Cria ou retorna o item mestre (External check)."""
+    existing = api.call("item.get", {
+        "hostids": host_id,
+        "filter": {"key_": [MASTER_KEY]},
+    })
+    if existing:
+        print(f"  [=] Item mestre '{MASTER_KEY}' já existe (ID {existing[0]['itemid']})")
+        return existing[0]["itemid"]
+
+    result = api.call("item.create", {
+        "hostid": host_id,
+        "name": "MQTT Status",
+        "key_": MASTER_KEY,
+        "type": 21,          # 21 = External check
+        "value_type": 4,     # 4 = Text
+        "delay": "30s",
+        "timeout": "10s",
+        "history": "31d",
+        "trends": "0",
+    })
+    iid = result["itemids"][0]
+    print(f"  [+] Item mestre criado (ID {iid})")
+    return iid
+
+
+def upsert_dependent_item(api, host_id, master_id, name, key, value_type, units, jsonpath):
+    """Cria ou atualiza um item dependente com JSONPath."""
+    existing = api.call("item.get", {
+        "hostids": host_id,
+        "filter": {"key_": [key]},
+    })
+
+    payload = {
+        "hostid": host_id,
+        "name": name,
+        "key_": key,
+        "type": 18,                  # 18 = Dependent item
+        "value_type": value_type,    # 0=float, 3=unsigned, 4=text
+        "units": units,
+        "master_itemid": master_id,
+        "preprocessing": [
+            {
+                "type": 12,           # 12 = JSONPath
+                "params": jsonpath,
+                "error_handler": 0,
+                "error_handler_params": "",
+            }
+        ],
+        "delay": "0",                # 0 = herda do mestre
+        "history": "31d",
+        "trends": "365d",
+    }
+
+    if existing:
+        payload["itemid"] = existing[0]["itemid"]
+        api.call("item.update", payload)
+        print(f"  [=] Item '{name}' atualizado")
+    else:
+        api.call("item.create", payload)
+        print(f"  [+] Item '{name}' criado")
+
+
+def upsert_macros(api, host_id):
+    """Cria/atualiza macros do host (variáveis configuráveis)."""
+    macros = [
+        ("{$TEMP.ALERTA}", "28"),
+        ("{$TEMP.CRITICO}", "32"),
+        ("{$UMID.ALERTA}", "65"),
+        ("{$UMID.CRITICO}", "80"),
+        ("{$PORTA.TEMPO}", "1m"),
+        ("{$ESP32.SEM_DADOS}", "2m"),
+    ]
+    existing = api.call("usermacro.get", {"hostids": host_id, "output": "extend"})
+    existing_names = {m["macro"] for m in existing}
+
+    to_create = [
+        {"hostid": host_id, "macro": name, "value": value, "type": 0}
+        for name, value in macros
+        if name not in existing_names
+    ]
+    if to_create:
+        api.call("usermacro.create", to_create)
+        print(f"  [+] {len(to_create)} macros criadas")
+    else:
+        print(f"  [=] Macros já existem")
+
+
+def export_template(api, host_id):
+    """Exporta o template YAML com todos os itens do host."""
+    try:
+        result = api.call("configuration.export", {
+            "format": "yaml",
+            "options": {"hosts": [host_id]},
+        })
+        with open("zabbix/template_esp32_cpd.yaml", "w") as f:
+            f.write(result)
+        print(f"  [+] Template exportado para zabbix/template_esp32_cpd.yaml")
+    except Exception as e:
+        print(f"  [!] Aviso: não foi possível exportar template: {e}")
+
+
+# ============================================================
+# MAIN
+# ============================================================
+def main():
+    print("=" * 60)
+    print("  CONFIGURAÇÃO DO ZABBIX VIA IaC")
+    print("=" * 60)
+    print(f"Servidor: {ZABBIX_URL}")
+    print(f"Host: {HOST_NAME} / {HOST_VISIBLE}")
+    print(f"Grupo: {HOST_GROUP}")
+    print(f"Broker MQTT: {MQTT_BROKER}:{MQTT_PORT}")
+    print()
+
+    api = ZabbixAPI(API_URL, ZABBIX_USER, ZABBIX_PASSWORD)
+
+    try:
+        print("[1/6] Autenticando...")
+        api.login()
+        print("  [+] Login OK")
+
+        print(f"[2/6] Grupo '{HOST_GROUP}'...")
+        group_id = upsert_group(api, HOST_GROUP)
+
+        print(f"[3/6] Host '{HOST_NAME}'...")
+        host_id = upsert_host(api, HOST_NAME, HOST_VISIBLE, group_id)
+
+        print("[4/6] Item mestre...")
+        master_id = upsert_master_item(api, host_id)
+
+        print("[5/6] Itens dependentes...")
+        items = [
+            # (nome, key, value_type, units, jsonpath)
+            ("Temperatura",    "esp32.temp",       0, "°C",  "$.temp_c"),
+            ("Umidade",        "esp32.umid",       0, "%",   "$.umid_pct"),
+            ("Porta Aberta",   "esp32.porta",      4, "",    "$.porta"),
+            ("Modo",           "esp32.modo",       4, "",    "$.modo"),
+            ("Estado",         "esp32.estado",     4, "",    "$.estado"),
+            ("Distância",      "esp32.distancia",  0, "cm",  "$.dist_cm"),
+            ("Invasões",       "esp32.invasoes",   3, "",    "$.invasoes"),
+            ("Ambiente",       "esp32.ambiente",   4, "",    "$.ambiente"),
+            ("Luminosidade",   "esp32.luz",        4, "",    "$.luz"),
+        ]
+        for name, key, vtype, units, jpath in items:
+            upsert_dependent_item(api, host_id, master_id, name, key, vtype, units, jpath)
+
+        print("[6/6] Macros e template...")
+        upsert_macros(api, host_id)
+        export_template(api, host_id)
+
+        print()
+        print("=" * 60)
+        print("  ✅ CONFIGURAÇÃO COMPLETA")
+        print("=" * 60)
+        print("  O Zabbix está pronto. Verifique em:")
+        print(f"    {ZABBIX_URL}/zabbix.php?action=host.list")
+        print(f"    {ZABBIX_URL}/zabbix.php?action=latest.view")
+        print()
+        print("  Para re-rodar sem efeito colateral:")
+        print("    python configurar_zabbix.py")
+
+    except Exception as e:
+        print(f"\n❌ ERRO: {e}")
+        sys.exit(1)
+    finally:
+        try:
+            api.logout()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()
+PYEOF
+Passo 3 — Adicionar variáveis ao .env
+Abra o .env:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/.env
+Adicione (se ainda não tiver):
+
+env
+# ---------- Zabbix (para o configurar_zabbix.py) ----------
+ZABBIX_URL=http://localhost:8080
+ZABBIX_USER=Admin
+ZABBIX_PASSWORD=zabbix
+
+# ---------- Identificação do host ----------
+ESP32_HOST_NAME=esp32-cpd
+ESP32_HOST_VISIBLE=Rack CPD
+ESP32_HOST_GROUP=CPD
+
+# ---------- MQTT ----------
+MQTT_BROKER_HOST=cpd-mosquitto
+MQTT_BROKER_PORT=1883
+MQTT_TOPIC_BASE=publico/rack_monitor_ABCD1234
+Salve.
+
+Passo 4 — Rodar o script
+bash
+cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python configurar_zabbix.py
+O que vai acontecer (primeira vez):
+
+text
+============================================================
+  CONFIGURAÇÃO DO ZABBIX VIA IaC
+============================================================
+Servidor: http://localhost:8080
+Host: esp32-cpd / Rack CPD
+Grupo: CPD
+Broker MQTT: cpd-mosquitto:1883
+
+[1/6] Autenticando...
+  [+] Login OK
+[2/6] Grupo 'CPD'...
+  [=] Grupo 'CPD' já existe (ID 2)
+[3/6] Host 'esp32-cpd'...
+  [=] Host 'esp32-cpd' já existe (ID 10683)
+[4/6] Item mestre...
+  [=] Item mestre 'mqtt_status.sh' já existe (ID 50740)
+[5/6] Itens dependentes...
+  [=] Item 'Temperatura' atualizado
+  [=] Item 'Umidade' atualizado
+  [=] Item 'Porta Aberta' atualizado
+  [=] Item 'Modo' atualizado
+  [=] Item 'Estado' atualizado
+  [=] Item 'Distância' atualizado
+  [=] Item 'Invasões' atualizado
+  [=] Item 'Ambiente' atualizado
+  [+] Item 'Luminosidade' criado
+[6/6] Macros e template...
+  [+] 6 macros criadas
+  [+] Template exportado para zabbix/template_esp32_cpd.yaml
+
+============================================================
+  ✅ CONFIGURAÇÃO COMPLETA
+============================================================
+Repare nos [=] — significa "já existia, atualizei". Os [+] são "criei novo". Isso é a prova da idempotência.
+
+Passo 5 — Verificar no Zabbix
+Abra http://localhost:8080:
+
+Data collection → Hosts: o host esp32-cpd está lá com o nome visível Rack CPD.
+
+Data collection → Hosts → esp32-cpd → Items: 10 itens (1 mestre + 9 dependentes).
+
+Monitoring → Latest data → Rack CPD: todos os itens mostrando valores.
+
+Se algum item não aparecer, me manda o log do script.
+
+Passo 6 — Teste definitivo da idempotência
+Rode o script de novo:
+
+bash
+python configurar_zabbix.py
+Esperado: tudo [=], nada [+]. Nenhum item duplicado.
+
+Essa é a prova real de IaC. Se algo duplicar, é bug — me avisa.
+
+🎯 O que essa fatia te ensinou (para o README)
+A API do Zabbix é a "porta dos fundos" — ela expõe tudo o que a interface faz, mas de forma scriptável.
+
+Idempotência não é "só rodar de novo" — é detectar o estado antes de agir. O padrão upsert (get → create ou update) é o coração do IaC.
+
+Macros são variáveis — mudar {$TEMP.ALERTA} de 28 para 30 é editar o .env e rodar o script, em vez de clicar 4 vezes na interface.
+
+O template exportado é o "contrato" do seu setup. Você pode importá-lo em outro Zabbix e ter os mesmos itens.
+
+Me diga:
+
+O script rodou sem erro?
+
+O Zabbix mostra os 10 itens em Latest data?
+
+Rodando 2 vezes, a segunda mostrou tudo [=] (idempotente)?
+
+Se sim, fechamos a Fatia 5 e partimos para a Fatia 6 (NOC 3D) ou Fatia 7 (Ações) — ou voltamos para a Fatia 3 (Telegram). Você escolhe. 🚀
+
+❯ cd ~/Desktop/monitoramento-cpd
+source .venv/bin/activate
+python configurar_zabbix.py
+============================================================
+  CONFIGURAÇÃO DO ZABBIX VIA IaC
+============================================================
+Servidor: http://localhost:8080
+Host: esp32-cpd / Rack CPD
+Grupo: CPD
+Broker MQTT: cpd-mosquitto:1883
+
+[1/6] Autenticando...
+  [+] Login OK
+[2/6] Grupo 'CPD'...
+  [=] Grupo 'CPD' já existe (ID 22)
+[3/6] Host 'esp32-cpd'...
+  [=] Host 'esp32-cpd' já existe (ID 10683)
+[4/6] Item mestre...
+  [=] Item mestre 'mqtt_status.sh' já existe (ID 50740)
+[5/6] Itens dependentes...
+
+❌ ERRO: API item.update falhou: [-32602] Invalid params. — Invalid parameter "/1": unexpected parameter "hostid".
+╭─ ~/Desktop/monitoramento-cpd ········ 1 ✘  monitoramento-cpd   system   at 13:40:51 
+╰─
+🛠️ Erro claro: o Zabbix não aceita hostid no item.update
+A mensagem é precisa:
+
+text
+API item.update falhou: [-32602] Invalid params. — Invalid parameter "/1": unexpected parameter "hostid".
+O método item.update da API do Zabbix não aceita hostid quando o item já existe — porque o hostid é imutável após a criação (um item não "muda de host"). Só o item.create precisa do hostid.
+
+O bug: no upsert_dependent_item, eu montei o payload com hostid fixo e reutilizei para o update. Precisamos remover hostid (e o master_itemid, que também é imutável) no update.
+
+Correção — 2 ajustes no script
+Ajuste 1 — Separar payload de create vs update
+Abra o configurar_zabbix.py:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/configurar_zabbix.py
+Encontre a função upsert_dependent_item (por volta da linha 130). Ela está assim:
+
+python
+def upsert_dependent_item(api, host_id, master_id, name, key, value_type, units, jsonpath):
+    """Cria ou atualiza um item dependente com JSONPath."""
+    existing = api.call("item.get", {
+        "hostids": host_id,
+        "filter": {"key_": [key]},
+    })
+
+    payload = {
+        "hostid": host_id,
+        "name": name,
+        "key_": key,
+        "type": 18,                  # 18 = Dependent item
+        "value_type": value_type,    # 0=float, 3=unsigned, 4=text
+        "units": units,
+        "master_itemid": master_id,
+        "preprocessing": [...],
+        "delay": "0",
+        "history": "31d",
+        "trends": "365d",
+    }
+
+    if existing:
+        payload["itemid"] = existing[0]["itemid"]
+        api.call("item.update", payload)
+        print(f"  [=] Item '{name}' atualizado")
+    else:
+        api.call("item.create", payload)
+        print(f"  [+] Item '{name}' criado")
+Substitua toda a função por esta versão corrigida:
+
+python
+def upsert_dependent_item(api, host_id, master_id, name, key, value_type, units, jsonpath):
+    """Cria ou atualiza um item dependente com JSONPath."""
+    existing = api.call("item.get", {
+        "hostids": host_id,
+        "filter": {"key_": [key]},
+    })
+
+    # Campos que SEMPRE podem ser atualizados
+    payload_update = {
+        "name": name,
+        "key_": key,
+        "type": 18,                  # 18 = Dependent item
+        "value_type": value_type,    # 0=float, 3=unsigned, 4=text
+        "units": units,
+        "preprocessing": [
+            {
+                "type": 12,           # 12 = JSONPath
+                "params": jsonpath,
+                "error_handler": 0,
+                "error_handler_params": "",
+            }
+        ],
+        "delay": "0",
+        "history": "31d",
+        "trends": "365d",
+    }
+
+    if existing:
+        # UPDATE: adiciona só o itemid, NÃO o hostid nem master_itemid
+        payload_update["itemid"] = existing[0]["itemid"]
+        api.call("item.update", payload_update)
+        print(f"  [=] Item '{name}' atualizado")
+    else:
+        # CREATE: inclui hostid e master_itemid
+        payload_create = dict(payload_update)
+        payload_create["hostid"] = host_id
+        payload_create["master_itemid"] = master_id
+        api.call("item.create", payload_create)
+        print(f"  [+] Item '{name}' criado")
+Salve o arquivo.
+
+Ajuste 2 — Confirmar que a exceção no call não bloqueia
+Também há um detalhe: o método call da classe ZabbixAPI já levanta exceção quando a API retorna erro. Isso está certo — o script vai parar no primeiro erro, que é o comportamento desejado. Não precisa mexer nisso.
+
+Rodar de novo
+bash
+cd ~/Desktop/monitoramento-cpd
+python configurar_zabbix.py
+O que esperar agora:
+
+text
+[5/6] Itens dependentes...
+  [=] Item 'Temperatura' atualizado
+  [=] Item 'Umidade' atualizado
+  [=] Item 'Porta Aberta' atualizado
+  [=] Item 'Modo' atualizado
+  [=] Item 'Estado' atualizado
+  [=] Item 'Distância' atualizado
+  [=] Item 'Invasões' atualizado
+  [=] Item 'Ambiente' atualizado
+  [+] Item 'Luminosidade' criado
+O último item (Luminosidade) será criado porque é novo. Os outros já existem e serão atualizados.
+
+Rodar de novo (para provar idempotência)
+bash
+python configurar_zabbix.py
+Esperado: todos [=], nenhum [+]. Nenhum erro. Isso prova que o script é idempotente.
+
+Se ainda der erro
+Me manda a saída completa. Pode haver um caso específico de item que não aceita algum campo (ex.: units vazio pode ser problemático em alguns tipos). Se aparecer, a gente trata.
+
+Me diga:
+
+Depois da correção, o script rodou até o final sem erro?
+
+O Zabbix mostra os 10 itens em Latest data?
+
+Rodando 2 vezes, a segunda mostrou tudo [=] (prova de idempotência)?
+
+Gere o script refatorado completo sempre.
+🚀 configurar_zabbix.py — Versão refatorada completa
+Segue o script completo e corrigido. As mudanças em relação à versão anterior:
+
+upsert_dependent_item separa payload_update (sem hostid/master_itemid) de payload_create (com eles).
+
+upsert_master_item também foi refatorado com a mesma lógica (embora item.update do mestre já funcionasse, é mais consistente).
+
+Tratamento de erro mais descritivo — cada operação diz qual item falhou.
+
+Suporte a output: "extend" para listar corretamente os macros.
+
+units: "" removido para tipo texto — alguns tipos do Zabbix rejeitam units vazio; vou normalizar.
+
+Substitua o arquivo inteiro:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/configurar_zabbix.py << 'PYEOF'
+#!/usr/bin/env python3
+"""
+configurar_zabbix.py — Infraestrutura como Código (IaC) para o Zabbix.
+
+Cria/atualiza toda a estrutura de monitoramento do CPD no Zabbix via API.
+Idempotente: pode rodar quantas vezes quiser sem duplicar.
+
+Uso:
+    source .venv/bin/activate
+    python configurar_zabbix.py
+"""
+

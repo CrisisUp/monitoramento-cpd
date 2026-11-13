@@ -1,0 +1,139 @@
+zabbix_export:
+  version: '7.0'
+  host_groups:
+    - uuid: 988387d69cc4407cbe2a7a2dd108a6cc
+      name: CPD
+  hosts:
+    - host: esp32-cpd
+      name: 'Rack CPD'
+      groups:
+        - name: CPD
+      items:
+        - name: Ambiente
+          type: DEPENDENT
+          key: esp32.ambiente
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ambiente
+          master_item:
+            key: mqtt_status.sh
+        - name: Distância
+          type: DEPENDENT
+          key: esp32.distancia
+          delay: '0'
+          value_type: FLOAT
+          units: cm
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dist_cm
+          master_item:
+            key: mqtt_status.sh
+        - name: Estado
+          type: DEPENDENT
+          key: esp32.estado
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.estado
+          master_item:
+            key: mqtt_status.sh
+        - name: Invasões
+          type: DEPENDENT
+          key: esp32.invasoes
+          delay: '0'
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.invasoes
+          master_item:
+            key: mqtt_status.sh
+        - name: Luminosidade
+          type: DEPENDENT
+          key: esp32.luz
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.luz
+          master_item:
+            key: mqtt_status.sh
+        - name: Modo
+          type: DEPENDENT
+          key: esp32.modo
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.modo
+          master_item:
+            key: mqtt_status.sh
+        - name: 'Porta Aberta'
+          type: DEPENDENT
+          key: esp32.porta
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.porta
+          master_item:
+            key: mqtt_status.sh
+        - name: Temperatura
+          type: DEPENDENT
+          key: esp32.temp
+          delay: '0'
+          value_type: FLOAT
+          units: °C
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.temp_c
+          master_item:
+            key: mqtt_status.sh
+        - name: Umidade
+          type: DEPENDENT
+          key: esp32.umid
+          delay: '0'
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.umid_pct
+          master_item:
+            key: mqtt_status.sh
+        - name: 'MQTT Status'
+          type: EXTERNAL
+          key: mqtt_status.sh
+          delay: 30s
+          value_type: TEXT
+          trends: '0'
+          timeout: 10s
+      macros:
+        - macro: '{$ESP32.SEM_DADOS}'
+          value: 2m
+        - macro: '{$PORTA.TEMPO}'
+          value: 1m
+        - macro: '{$TEMP.ALERTA}'
+          value: '28'
+        - macro: '{$TEMP.CRITICO}'
+          value: '32'
+        - macro: '{$UMID.ALERTA}'
+          value: '65'
+        - macro: '{$UMID.CRITICO}'
+          value: '80'
+      inventory_mode: DISABLED

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NOC 3D</title>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #15181d; }
+        #three-container { position: absolute; inset: 0; width: 100%; height: 100%; }
+        .mock-badge {
+            position: absolute; top: 12px; left: 12px; z-index: 100;
+            padding: 6px 12px; border-radius: 3px;
+            font: 11px monospace; color: #8e959e;
+            background: rgba(17, 18, 23, 0.85);
+            border: 1px solid #2c3038;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="three-container"></div>
+    <div class="mock-badge" id="badge">Modo: mock | 24.5°C | porta fechada</div>
+
+    <script type="module">
+        import { criarCena } from './cena3d.js';
+
+        const container = document.getElementById('three-container');
+        const badge = document.getElementById('badge');
+        const cena = criarCena(container);
+
+        const dadosMock = {
+            ambiente: { online: true, energia: 1, agua: 0, porta: 0, temperatura: 24.5, umidade: 45 },
+            servidores: [{ id: 'srv1', nome: 'SRV-01', estado: 'ok', cpu: 30 }]
+        };
+
+        function atualizar(dados) {
+            cena.atualizar(dados);
+            const porta = dados.ambiente.porta === 1 ? 'porta aberta' : 'porta fechada';
+            const temp = dados.ambiente.temperatura != null ? `${dados.ambiente.temperatura}°C` : '--';
+            badge.textContent = `Modo: mock | ${temp} | ${porta}`;
+        }
+
+        atualizar(dadosMock);
+        console.log('[NOC 3D] Cena iniciada.');
+
+        setTimeout(() => { dadosMock.ambiente.porta = 1; atualizar(dadosMock); }, 4000);
+        setTimeout(() => { dadosMock.ambiente.porta = 0; dadosMock.ambiente.temperatura = 33; atualizar(dadosMock); }, 8000);
+        setTimeout(() => { dadosMock.ambiente.agua = 1; atualizar(dadosMock); }, 14000);
+        setTimeout(() => { dadosMock.ambiente.agua = 0; dadosMock.ambiente.temperatura = 24.5; atualizar(dadosMock); }, 20000);
+        setTimeout(() => { dadosMock.ambiente.energia = 0; atualizar(dadosMock); }, 24000);
+        setTimeout(() => { dadosMock.ambiente.energia = 1; atualizar(dadosMock); }, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,1821 @@
+O nosso 00-plano.md esta assim:
+📋 Recebi o resumo — mas o 00-plano.md não veio anexado
+Você disse "O nosso 00-plano.md está assim", mas o arquivo não foi colado na mensagem. Só veio o histórico longo da nossa conversa (todos os meus passos anteriores). O 00-plano.md em si não apareceu.
+
+Duas coisas para resolver agora
+1. Mostre o 00-plano.md atual
+bash
+cat ~/Desktop/monitoramento-cpd/docs/00-plano.md
+Cole a saída aqui. Provavelmente está com o conteúdo original do script (o que eu escrevi no Passo 0). Mas você pode ter editado, então quero ver o estado real antes de atualizar.
+
+2. Status real da Fatia 1 — o mosquitto_sub local já mostrou JSON?
+O último log que você mandou (do docker compose logs mosquitto) terminou limpo, com:
+
+text
+1794488133: Loading config file /mosquitto/config/conf.d/bridge.conf
+Isso prova que a ponte carregou sem erros de sintaxe. Mas o teste de aceite da Fatia 1 é outro — é rodar:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+E ver os JSONs com prefixo publico/.
+
+Você chegou a rodar esse comando? Se sim, apareceu algo? Se não rodou ainda, rode agora (com o Wokwi ativo) e me manda 2–3 linhas do que apareceu.
+
+O que a Fatia 2 vai precisar (adiantando)
+Independente do 00-plano.md estar certo ou não, quando o teste acima passar, a Fatia 2 será:
+
+Host no Zabbix — esp32-cpd, sem interface de agente
+
+Item mestre do tipo MQTT agent (nativo no Zabbix 7.0, sem plugin), lendo publico/rack_monitor_ABCD1234/status
+
+Itens dependentes com JSONPath: $.temp_c, $.umid_pct, $.porta, $.modo, $.estado, $.invasoes, $.dist_cm
+
+Segundo item mestre lendo .../ambiente (para sensor_dht_ok, limiares)
+
+Terceiro item mestre lendo .../heartbeat (uptime, sinal de vida)
+
+Validação em Monitoring → Latest data mostrando os valores reais
+
+O configurar.py idempotente entra na Fatia 5 — na 2, vamos criar via API também, mas de forma mais direta, para você ver cada passo.
+
+Me manda:
+
+cat ~/Desktop/monitoramento-cpd/docs/00-plano.md (o conteúdo atual)
+
+Saída do docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v (2–3 linhas, com o Wokwi rodando)
+
+Com isso a gente fecha a Fatia 1 de vez e parte para a 2. 🚀
+
+# Plano — monitoramento-cpd
+
+Adaptação do projeto "Monitoramento lógico e físico de sala de servidores"
+para o firmware RackMonitor v8.3 (ESP32 monolítico, MQTT + HMAC).
+
+## Decisões
+
+- Broker: Mosquitto local no Docker
+- Ingestão no Zabbix: MQTT agent
+- Ações (HMAC): defilades para a fatia final
+- Wokwi primeiro; hardware real depois
+
+## Fatias
+
+- [x] 0. Base Docker
+- [ ] 1. Ponte MQTT: Wokwi -> broker público -> Mosquitto local
+- [ ] 2. Template Zabbix MQTT
+- [ ] 3. Gatilhos + Telegram
+- [ ] 4. Dashboard simples
+- [ ] 5. Configuração por código
+- [ ] 6. NOC 3D
+- [ ] 7. Ações (HMAC)
+
+## Convenções
+
+- Nomes de container: prefixo `cpd-`
+- Rede Docker: `cpd-net`
+- Tópicos de fora chegam no broker local com prefixo `publico/`
+✅ Plano está quase perfeito — só 1 typo
+O 00-plano.md está fiel ao que combinamos. Só um errinho de digitação:
+
+diff
+- Ações (HMAC): defilades para a fatia final
++ Ações (HMAC): deixadas para a fatia final
+E o checkbox da Fatia 1 ainda está [ ] — o que faz sentido, porque falta o teste de aceite (ver os JSONs chegando no publico/#).
+
+Antes de mexer no plano: teste de aceite da Fatia 1
+Você ainda não me mandou a saída do comando-chave. Rode com o Wokwi ativo:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+O que esperar (a cada ~30s):
+
+text
+publico/rack_monitor_ABCD1234/status/lwt {"status":"online"}
+publico/rack_monitor_ABCD1234/status     {"estado":"NORMAL","modo":"ARMADO",...}
+publico/rack_monitor_ABCD1234/ambiente   {"temp_c":24.0,"umid_pct":40.0,...}
+publico/rack_monitor_ABCD1234/heartbeat  {"uptime_s":...,...}
+✅ Se aparecerem JSONs com prefixo publico/ → Fatia 1 fechada de verdade.
+
+❌ Se ficar vazio por 60s → o Wokwi não está rodando ou a bridge caiu. Me manda a saída + docker compose logs --tail=20 mosquitto que a gente depura.
+
+🔴 Se der erro (Connection refused, not authorized, etc.) → me manda o erro.
+
+Ctrl+C para parar.
+
+Depois do teste, atualize o plano
+Se aparecerem os JSONs, edite o 00-plano.md:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/docs/00-plano.md
+Troque:
+
+diff
+- Ações (HMAC): defilades para a fatia final
++ Ações (HMAC): deixadas para a fatia final
+
+- [ ] 1. Ponte MQTT: Wokwi -> broker público -> Mosquitto local
++ [x] 1. Ponte MQTT: Wokwi -> broker público -> Mosquitto local
+E, se quiser registrar o que aprendemos nesta fatia (útil no futuro), adicione ao final:
+
+markdown
+## Lições da Fatia 1
+
+- `include <arquivo>` não existe no Mosquitto 2.x — use `include_dir <pasta>`
+- O arquivo da ponte precisa terminar em `.conf` e morar em `conf.d/`
+- `remote_username`/`remote_password` vazios são erro fatal — remova as linhas para brokers anônimos
+- `local_prefix` não existe como diretiva global — o prefixo vai na linha `topic`:
+  `topic <padrão> in <qos> <prefixo-local> <prefixo-remoto>`
+- `chown: Read-only file system` nos logs é cosmético (mount `:ro`), ignore
+Salve.
+
+O que vem agora
+Me manda a saída do mosquitto_sub com o prefixo publico/. Com isso:
+
+Fechamos oficialmente a Fatia 1 (marco [x] no plano)
+
+Partimos para a Fatia 2: criar no Zabbix o host esp32-cpd + 3 itens mestre MQTT (status, ambiente, heartbeat) + dependentes com JSONPath, validando em Monitoring → Latest data
+
+Se o mosquitto_sub ficar vazio, me avisa que a gente checa se o Wokwi está publicando (docker run ... mosquitto_sub -h broker.emqx.io ...) antes de culpar a bridge.
+
+Bora fechar a Fatia 1. 🚀
+
+🎉 FATIA 1 FECHADA COM SUCESSO!
+Olha que beleza:
+
+text
+publico/rack_monitor_ABCD1234/status     {"estado":"NORMAL","modo":"ARMADO",...}
+publico/rack_monitor_ABCD1234/status/lwt {"status":"online"}
+publico/rack_monitor_ABCD1234/ambiente   {"temp_c":24.0,"umid_pct":40.0,...}
+publico/rack_monitor_ABCD1234/heartbeat  {"uptime_s":60,...} → 90 → 120 → 150 → 180
+Todos os 4 tópicos chegando com prefixo publico/, heartbeat contando o uptime de 30 em 30s, tudo perfeito. A ponte Wokwi → broker público → Mosquitto local funcionou.
+
+1. Atualize o 00-plano.md (30s)
+bash
+open -e ~/Desktop/monitoramento-cpd/docs/00-plano.md
+Troque:
+
+diff
+- Ações (HMAC): defilades para a fatia final
++ Ações (HMAC): deixadas para a fatia final
+
+- [ ] 1. Ponte MQTT: Wokwi -> broker público -> Mosquitto local
++ [x] 1. Ponte MQTT: Wokwi -> broker público -> Mosquitto local
+E acrescente ao final (opcional, mas útil):
+
+markdown
+## Lições da Fatia 1
+
+- `include <arquivo>` não existe no Mosquitto 2.x — use `include_dir <pasta>`
+- O arquivo da ponte precisa terminar em `.conf` e morar em `conf.d/`
+- `remote_username`/`remote_password` vazios são erro fatal — remova as linhas para brokers anônimos
+- `local_prefix` não existe como diretiva global — o prefixo vai na linha `topic`:
+  `topic <padrão> in <qos> <prefixo-local> <prefixo-remoto>`
+- `chown: Read-only file system` nos logs é cosmético (mount `:ro`), ignore
+2. Fatia 2 — Ingestão no Zabbix
+Agora vamos fazer o Zabbix ler esses tópicos. Precisamos de:
+
+Item	O que vai ser
+Host	esp32-cpd (sem interface de agente)
+Item mestre 1	mqtt.status — tipo MQTT agent, tópico publico/rack_monitor_ABCD1234/status, JSON
+Item mestre 2	mqtt.ambiente — mesmo tipo, tópico publico/rack_monitor_ABCD1234/ambiente
+Item mestre 3	mqtt.heartbeat — mesmo tipo, tópico publico/rack_monitor_ABCD1234/heartbeat
+Dependentes (JSONPath do status)	temp_c, umid_pct, porta, modo, estado, dist_cm, invasoes, ambiente, luz, uid
+Dependentes (JSONPath do ambiente)	sensor_dht_ok, t_alert, t_crit, u_alert, u_crit
+Dependente (JSONPath do heartbeat)	uptime_s
+O Zabbix 7.0 já tem item type MQTT agent nativo — não precisa de plugin externo. Só precisa:
+
+O host zabbix-server alcançar cpd-mosquitto:1883 (mesma rede Docker, então o hostname já resolve)
+
+Configurar user/password do broker se ele tiver autenticação (o nosso está anônimo, então deixamos em branco)
+
+Configurar o tópico e o JSONPath
+
+Duas formas de fazer a Fatia 2:
+
+Opção	Como	Prós	Contras
+A) Pela interface web	Clicar no Zabbix web (localhost:8080)	Você vê cada campo, entende o modelo de dados	~15 min de cliques; fácil errar digitação
+B) Pela API (Python)	Um script cria tudo de uma vez	Reproduzível, rápido, vira a base do configurar.py da Fatia 5	Você não vê os campos, só o resultado
+Recomendo A primeiro, B depois (a Fatia 5 formaliza o B). Você aprende o modelo do Zabbix e, quando o script entrar, já vai entender o que ele cria.
+
+3. Duas perguntas antes de começar a Fatia 2
+Você quer fazer pela interface (Opção A, mais didático) ou por script (Opção B, mais rápido)?
+
+O IP do container Mosquitto visto pelo Zabbix: como estão na mesma rede Docker (cpd-net), o Zabbix resolve cpd-mosquitto pelo nome. Confirma:
+
+bash
+docker compose exec zabbix-server getent hosts cpd-mosquitto
+Deve imprimir algo como 172.x.x.x cpd-mosquitto. Se sim, o hostname funciona direto.
+
+Me confirma:
+
+Fez a atualização do 00-plano.md? (só para saber)
+
+Rode docker compose exec zabbix-server getent hosts cpd-mosquitto e me diga o IP
+
+Prefere fazer a Fatia 2 pela interface (A) ou por script (B)?
+
+Com isso, te passo o guia completo da Fatia 2. 🚀
+
+Poderia deixar o 00-plano.md mais profissional?
+Plano profissional — versão revisada 📋
+Segue uma versão mais estruturada, com contexto, arquitetura, decisões registradas (ADR-lite), critérios de aceite por fatia e lições aprendidas. É o tipo de documento que, daqui a 6 meses, você (ou outra pessoa) consegue ler e entender o "porquê" de cada escolha.
+
+Substitua o conteúdo do 00-plano.md por isto:
+
+markdown
+# Plano de Projeto — Monitoramento CPD
+
+**Versão:** 1.1
+**Última atualização:** 2026-11-12
+**Responsável:** Cristiano
+**Status:** Em andamento (Fatia 1 concluída, Fatia 2 em preparação)
+
+---
+
+## 1. Contexto
+
+Laboratório de monitoramento de sala de servidores (CPD) que combina:
+
+- **Monitoramento físico:** um ESP32 (firmware RackMonitor v8.3) lê sensores de
+  porta, presença, luminosidade, distância, temperatura e umidade, e publica
+  o estado em tópicos MQTT.
+- **Monitoramento lógico:** um Zabbix central coleta, avalia gatilhos, dispara
+  alertas e expõe uma API.
+- **Visualização:** um Grafana apresenta dashboards operacionais.
+
+O objetivo é reproduzir, em ambiente próprio, a arquitetura do projeto de
+referência "Monitoramento lógico e físico de sala de servidores", adaptando
+o firmware existente (monolítico, MQTT + HMAC) sem reescrevê-lo.
+
+### 1.1 Referência
+
+Projeto original: monitoramento lógico + físico com ESP32, Zabbix, Grafana e
+painel NOC 3D. Documentação estruturada em `README.md` do repositório de
+origem.
+
+### 1.2 Escopo do laboratório
+
+- **Ambiente:** macOS Apple Silicon (Mac mini M4), Docker Desktop.
+- **Orquestração:** Docker Compose (single-host).
+- **Firmware:** simulado no Wokwi nesta fase; hardware real em fase posterior.
+- **Rede:** local, sem exposição à internet.
+
+---
+
+## 2. Arquitetura
+┌──────────────┐ MQTT (TLS opcional) ┌────────────────────┐
+│ ESP32 │ ──────────────────────▶ │ broker público │
+│ (Wokwi ou │ tópicos: │ broker.emqx.io │
+│ hardware) │ rack_monitor_... └─────────┬──────────┘
+└──────────────┘ │ bridge MQTT
+▼
+┌────────────────────┐
+│ Mosquitto local │
+│ (Docker, cpd-net) │
+│ tópicos: │
+│ publico/... │
+└─────────┬──────────┘
+│ MQTT agent
+▼
+┌────────────────────┐
+│ Zabbix Server │
+│ (coleta + alerta) │
+└─────────┬──────────┘
+│ API
+▼
+┌────────────────────┐
+│ Grafana │
+│ (dashboards) │
+└────────────────────┘
+
+text
+
+### 2.1 Fluxo de dados
+
+1. O ESP32 publica em `rack_monitor_ABCD1234/{status,ambiente,heartbeat,...}`
+   no broker público (`broker.emqx.io`).
+2. O Mosquitto local, via **bridge MQTT**, assina esses tópicos no broker
+   público e **republica localmente** com prefixo `publico/`.
+3. O Zabbix Server lê os tópicos locais via **MQTT agent** (item type nativo
+   do Zabbix 7.0), extrai campos com JSONPath e cria itens dependentes.
+4. Gatilhos avaliam os itens e disparam alertas (Telegram, na Fatia 3).
+5. O Grafana consulta a API do Zabbix e monta os dashboards.
+
+### 2.2 Por que bridge e não conexão direta?
+
+O Wokwi simula um ESP32 na nuvem e **não alcança `localhost`**. O firmware
+já publica no broker público; a bridge puxa esses dados para dentro da rede
+Docker, mantendo o Zabbix isolado da internet. Quando o hardware real entrar,
+basta apontar o firmware para o Mosquitto local e desligar a bridge.
+
+---
+
+## 3. Decisões arquiteturais
+
+| ID | Decisão | Justificativa | Alternativas descartadas |
+|---|---|---|---|
+| D1 | Broker MQTT local (Mosquitto em Docker) | Isolamento, reprodutibilidade, sem dependência de broker público | Usar apenas broker público (sem controle, latência variável) |
+| D2 | Ingestão no Zabbix via **MQTT agent** | Item type nativo, reaproveita o JSON do firmware, sem recompilar | Zabbix sender (exigiria alterar firmware), HTTP polling (exigiria endpoint HTTP no firmware) |
+| D3 | Bridge MQTT enquanto durar o Wokwi | Wokwi não alcança localhost | Expor Mosquitto local à internet (inseguro) |
+| D4 | Ações (HMAC + botões) na última fatia | Isolar o mais crítico para o fim, com base estável | Implementar cedo (arriscado, muda muito) |
+| D5 | Configuração idempotente via API (Fatia 5) | Reprodutibilidade, versionamento, sem cliques manuais | Configuração manual (não reproduzível) |
+| D6 | Wokwi antes de hardware | Validar pipeline sem custo/risco de hardware | Hardware direto (maior custo de erro) |
+
+---
+
+## 4. Roadmap (fatias)
+
+Cada fatia tem entregável, critério de aceite e dependências explícitas.
+
+### Fatia 0 — Base Docker ✅
+
+**Entregável:** stack Docker Compose com Mosquitto, Postgres, Zabbix Server,
+Zabbix Web e Grafana; `.env` para segredos; volumes nomeados para persistência.
+
+**Critério de aceite:**
+- [x] `docker compose ps` mostra todos os serviços `Up` (2 `healthy`)
+- [x] Broker responde a `mosquitto_pub`/`mosquitto_sub` local
+- [x] Zabbix Web acessível em `localhost:8080`
+- [x] Grafana acessível em `localhost:3000`
+
+**Dependências:** nenhuma.
+
+---
+
+### Fatia 1 — Ponte MQTT (Wokwi → broker público → Mosquitto local) ✅
+
+**Entregável:** `bridge.conf` no Mosquitto local, assinando os tópicos do
+broker público e republicando com prefixo `publico/`.
+
+**Critério de aceite:**
+- [x] `mosquitto_sub` local em `publico/#` recebe `status`, `ambiente` e `heartbeat`
+- [x] Ponte carrega sem erro de sintaxe
+- [x] Heartbeat incrementa `uptime_s` a cada 30 s
+
+**Dependências:** Fatia 0.
+
+**Lições aprendidas:** ver seção 6.
+
+---
+
+### Fatia 2 — Ingestão no Zabbix (MQTT agent)
+
+**Entregável:** host `esp32-cpd` no Zabbix, com 3 itens mestre (status,
+ambiente, heartbeat) e itens dependentes com JSONPath; validação em
+*Monitoring → Latest data*.
+
+**Critério de aceite (a definir em detalhe na execução):**
+- [ ] Item mestre `mqtt.status` retorna valor JSON não vazio
+- [ ] Dependentes `temp_c`, `umid_pct`, `porta`, `modo`, `estado` populados
+- [ ] Item `heartbeat.uptime_s` incrementa a cada 30 s
+- [ ] `zabbix-server` alcança `cpd-mosquitto:1883` pela rede Docker
+
+**Dependências:** Fatias 0 e 1.
+
+---
+
+### Fatia 3 — Gatilhos e Telegram
+
+**Entregável:** triggers para temperatura, porta aberta, invasão
+(`EMERGENCIA_RACK`), sensor DHT perdido e placa offline; ação de notificação
+via Telegram.
+
+**Critério de aceite:**
+- [ ] Simular condição (ex.: porta aberta) dispara alerta no Telegram
+- [ ] Alerta resolve automaticamente quando condição cessa
+- [ ] Template de mensagem em português, com nome de exibição do host
+
+**Dependências:** Fatia 2.
+
+---
+
+### Fatia 4 — Dashboard simples
+
+**Entregável:** dashboard Grafana com painéis nativos (não 3D) mostrando
+estado geral, temperatura/umidade, porta e contadores.
+
+**Critério de aceite:**
+- [ ] Dashboard atualiza a cada ≤ 30 s
+- [ ] Estado reflete mudanças reais do Wokwi
+- [ ] Provisionamento via arquivo (não cliques) já preparado para a Fatia 5
+
+**Dependências:** Fatia 2.
+
+---
+
+### Fatia 5 — Configuração por código (idempotência)
+
+**Entregável:** `zabbix/configurar.py` que cria/atualiza grupo, host,
+template, macros, gatilhos e Telegram; executável repetidamente sem efeito
+colateral. Exporta template YAML.
+
+**Critério de aceite:**
+- [ ] Rodar 1ª vez cria tudo
+- [ ] Rodar 2ª vez não duplica, apenas atualiza
+- [ ] Template exportado importável em Zabbix limpo
+- [ ] Documentação: variáveis `.env` necessárias
+
+**Dependências:** Fatias 2 e 3.
+
+---
+
+### Fatia 6 — NOC 3D
+
+**Entregável:** dashboard Grafana customizado (painel único em tela cheia),
+com sala/rack em 3D reagindo aos estados: `SEGURO`, `EMERGENCIA_RACK`,
+`DESARMADO`, água, energia, porta, temperatura.
+
+**Critério de aceite:**
+- [ ] 3D reage ao estado sem recarregar página
+- [ ] Clicar em problema foca o local correto
+- [ ] Nada depende de internet (Three.js vendorizado)
+
+**Dependências:** Fatias 4 e 5.
+
+---
+
+### Fatia 7 — Ações (HMAC)
+
+**Entregável:** serviço Python `acoes.py` que confere sessão Grafana e
+executa ações no Zabbix com usuário restrito (Reconhecer, Comentar,
+Manutenção, Desarmar emergência, Reset contadores), assinando comandos com
+a chave HMAC compartilhada com o firmware.
+
+**Critério de aceite:**
+- [ ] Botão no Grafana muda estado no ESP32 (via MQTT + HMAC)
+- [ ] Auditoria em `docker compose logs acoes`
+- [ ] Usuário sem permissão (Viewer) é bloqueado
+- [ ] Nonce monotônico rejeita replay
+
+**Dependências:** Fatias 1, 5.
+
+---
+
+## 5. Convenções
+
+| Item | Convenção |
+|---|---|
+| Pasta do projeto | `~/Desktop/monitoramento-cpd` |
+| Prefixo de containers | `cpd-` |
+| Rede Docker | `cpd-net` |
+| Prefixo de tópicos internos | `publico/` (bridge) |
+| Nome técnico do host no Zabbix | `esp32-cpd` (sem interface de agente) |
+| Nome de exibição no dashboard | `Rack CPD` |
+| Segredos | `.env` (nunca versionado) |
+
+---
+
+## 6. Lições aprendidas
+
+### Fatia 1 — Ponte MQTT
+
+- **`include <arquivo>` não existe no Mosquitto 2.x.** Use `include_dir <pasta>`
+  e coloque os arquivos em `conf.d/` com extensão `.conf`.
+- **`remote_username`/`remote_password` vazios são erro fatal.** Para brokers
+  anônimos, remova as linhas (não as deixe em branco).
+- **`local_prefix` não existe como diretiva global.** O prefixo vai na própria
+  linha `topic`: `topic <padrão> in <qos> <prefixo-local> <prefixo-remoto>`.
+- **`chown: Read-only file system` nos logs é cosmético.** Vem do mount `:ro`
+  do config; não afeta a operação. Para silenciar, mude para `:rw` (mas perde
+  a proteção contra escrita acidental).
+- **O mount `:ro` é bom.** Vale manter, e conviver com o aviso.
+
+### Geral
+
+- **Sempre valide o YAML antes do `up -d`:** `docker compose config --quiet`.
+- **Logs com timestamps:** quando há múltiplos restarts, o timestamp UNIX na
+  frente da linha identifica qual restart gerou o quê.
+- **Prefixar tópicos com `publico/`** deixa óbvio o que veio de fora; útil
+  quando o hardware real entrar e a bridge for desligada.
+
+---
+
+## 7. Riscos e mitigações
+
+| Risco | Impacto | Mitigação |
+|---|---|---|
+| Broker público (`emqx.io`) instável | Fatia 1 falha intermitentemente | Bridge com `restart_timeout`; migrar hardware para broker local |
+| Wokwi não alcança localhost | Ingestão direta impossível | Bridge MQTT (já implementada) |
+| MAC do Wokwi vs. hardware real | Tópico muda (`ABCD1234`) | Parametrizar via `.env` e template |
+| HMAC mal configurado na Fatia 7 | Ações recusadas ou replay aceito | Testes unitários no serviço Python + nonce monotônico |
+| Docker Desktop no Mac dormindo | Containers pausam | Documentar `docker compose up -d` após acordar |
+
+---
+
+## 8. Referências
+
+- Projeto original: README de "Monitoramento lógico e físico de sala de servidores"
+- Firmware: `RackMonitor.ino` v8.3 (MQTT + HMAC + Nonce)
+- Mosquitto: documentação oficial de bridge
+- Zabbix 7.0 LTS: item type `MQTT agent`
+O que mudou em relação à versão anterior
+Antes	Agora
+Lista plana de fatias	Cada fatia com entregável, critério de aceite e dependências
+Sem contexto	Seção 1 (Contexto) e 1.2 (Escopo)
+Sem arquitetura	Seção 2 com diagrama ASCII e fluxo
+Sem decisões registradas	Seção 3 (ADR-lite) com alternativas descartadas
+Sem convenções	Seção 5
+Sem lições	Seção 6 (Fatia 1 + Geral)
+Sem riscos	Seção 7
+Typo defilades	Corrigido para deixadas
+Como aplicar
+Opção A — Substituir tudo:
+
+bash
+cat > ~/Desktop/monitoramento-cpd/docs/00-plano.md << 'EOF'
+# (cole todo o conteúdo acima)
+EOF
+Ou, mais simples: abra o arquivo e cole.
+
+bash
+open -e ~/Desktop/monitoramento-cpd/docs/00-plano.md
+Opção B — Manter o atual e adicionar as seções novas:
+
+Se preferir o plano enxuto, use só as seções 3, 5, 6 e 7 (decisões,
+convenções, lições, riscos), mantendo sua lista simples de fatias.
+
+Depois de atualizar, me diga:
+
+Ficou bom? Quer mudar algo (nome do projeto, formato, mais/menos detalhe)?
+
+Rode docker compose exec zabbix-server getent hosts cpd-mosquitto e me diga o IP
+
+Prefere fazer a Fatia 2 pela interface (A) ou por script (B)?
+
+Com o plano fechado, partimos para a Fatia 2 com a base sólida. 🚀
+
+Como posso testar ou "ver funcionando" tudo que fizemos até aqui?
+🎬 Como "ver funcionando" até aqui
+Você já tem duas coisas funcionando de verdade (Fatias 0 e 1). Vou te dar 3 testes visuais — do mais simples ao mais completo — para você confirmar com os próprios olhos que a stack está viva e que os dados do ESP32 estão circulando.
+
+Teste 1 — "Painel de controle" rápido (30 segundos)
+Ver que todos os serviços estão de pé e respondendo.
+
+bash
+cd ~/Desktop/monitoramento-cpd
+
+# Estado geral
+docker compose ps
+O que olhar:
+
+cpd-mosquitto → Up (healthy)
+
+cpd-postgres → Up (healthy)
+
+cpd-zabbix-web → Up (healthy)
+
+cpd-zabbix-server → Up
+
+cpd-grafana → Up
+
+Se algum estiver Restarting ou Exited, é sinal de problema — mas você já passou por aqui e estava tudo verde.
+
+Teste do broker (prova de vida):
+
+bash
+docker compose exec mosquitto mosquitto_pub -h localhost -t teste/cpd -m "vivo às $(date +%H:%M:%S)"
+docker compose exec mosquitto mosquitto_sub -h localhost -t teste/cpd -C 1 -W 3
+Deve imprimir a mensagem que você acabou de publicar. Isso prova que o Mosquitto local está funcionando.
+
+Teste 2 — "Ver o Wokwi ao vivo" (o mais legal, 1 minuto)
+Ver os dados do ESP32 chegando no seu Mac, em tempo real.
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+O que você vai ver (a cada ~30s):
+
+text
+publico/rack_monitor_ABCD1234/status     {"estado":"NORMAL","modo":"ARMADO","temp_c":24.0,...}
+publico/rack_monitor_ABCD1234/ambiente   {"temp_c":24.0,"umid_pct":40.0,...}
+publico/rack_monitor_ABCD1234/heartbeat  {"uptime_s":30,...}
+Perguntas para se fazer:
+
+O uptime_s está incrementando? (30 → 60 → 90...) → o Wokwi está vivo
+
+O temp_c e umid_pct batem com o que aparece no display do Wokwi? → a ponte está fiel
+
+Os JSONs têm todos os campos? → nada foi truncado no caminho
+
+Ctrl+C para parar.
+
+Teste interativo: com esse comando rodando, mexa em algum sensor do Wokwi (ex.: clique no PIR, abra a porta simulada). A próxima mensagem de status deve refletir a mudança em porta:true ou estado:"AVISO SALA" em até ~30s (o intervalo de publicação do firmware).
+
+Teste 3 — "Ver no Zabbix e no Grafana" (mais completo)
+Provar que as interfaces web estão funcionando.
+
+bash
+open http://localhost:8080   # Zabbix
+open http://localhost:3000   # Grafana
+Zabbix (localhost:8080)
+Login: Admin / zabbix
+
+O que você verá agora (sem configuração):
+
+Dashboard padrão do Zabbix
+
+Menu lateral: Monitoring, Data collection, Alerts, Reports, Administration
+
+Nenhum host aparecendo em Monitoring → Hosts (a não ser o "Zabbix server" default, que fica com ícone cinza porque não tem agente real)
+
+Não espere ver dados do ESP32 aqui ainda — isso é a Fatia 2. Por enquanto, o teste é só: "a interface abre, consigo logar, os menus estão lá".
+
+Grafana (localhost:3000)
+Login: admin / a senha que você pôs no .env (GRAFANA_ADMIN_PASSWORD)
+
+O que você verá agora:
+
+Welcome screen do Grafana (ou pedido de trocar senha, se ainda não trocou)
+
+Nenhum dashboard e nenhuma fonte de dados ainda — isso é Fatia 4
+
+Se quiser só ver a interface funcionando, tudo bem
+
+Por enquanto, o teste é: "abre, loga, vejo o menu".
+
+Teste 4 — "Ver a rede do Docker por dentro" (opcional, para os curiosos)
+Prova que os containers se falam pelo nome (não por IP), que é como o Zabbix vai se conectar ao Mosquitto na Fatia 2.
+
+bash
+# Mosquitto alcança o Postgres (ambos na rede cpd-net)
+docker compose exec mosquitto ping -c 2 cpd-postgres
+
+# Zabbix server alcança o Mosquitto (mesma rede)
+docker compose exec zabbix-server getent hosts cpd-mosquitto
+Esperado:
+
+ping: 2 pacotes, 0% perda → mesma rede
+
+getent: imprime 172.x.x.x cpd-mosquitto → resolução de nome funciona
+
+Isso é pré-requisito para a Fatia 2 (o Zabbix precisa resolver cpd-mosquitto pelo nome).
+
+Resumo visual do que está funcionando
+Componente	Status	Como ver
+Mosquitto (broker local)	✅	mosquitto_pub/sub com "ola"
+Postgres	✅	(healthy) no ps
+Zabbix server	✅	Up no ps
+Zabbix web	✅	Login em localhost:8080
+Grafana	✅	Login em localhost:3000
+Bridge Wokwi → local	✅	mosquitto_sub -t 'publico/#' com JSONs
+Dados do ESP32	✅	uptime_s incrementando
+O que ainda não está funcionando (e é normal)
+O que falta	Fatia
+Dados aparecendo no Zabbix (Latest data)	Fatia 2
+Gatilhos disparando alertas	Fatia 3
+Dashboard mostrando gráficos	Fatia 4
+Sala 3D	Fatia 6
+Botões de ação	Fatia 7
+Teste "cinematográfico" (para mostrar para alguém)
+Se quiser impressionar (ou só curtir o que construiu), abra 4 terminais lado a lado e rode em cada um:
+
+Terminal 1 — estado dos containers:
+
+bash
+cd ~/Desktop/monitoramento-cpd && watch -n 2 'docker compose ps'
+Terminal 2 — tráfego MQTT local:
+
+bash
+cd ~/Desktop/monitoramento-cpd && docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+Terminal 3 — tráfego no broker público (de fora do Docker):
+
+bash
+docker run --rm -it eclipse-mosquitto:2.0 mosquitto_sub -h broker.emqx.io -t 'rack_monitor_ABCD1234/#' -v
+Terminal 4 — logs do Mosquitto:
+
+bash
+cd ~/Desktop/monitoramento-cpd && docker compose logs -f mosquitto
+O que você vê: terminais 2 e 3 sincronizados (mesmos dados, um com prefixo publico/), terminal 1 mostrando tudo verde, terminal 4 mostrando a bridge trabalhando. É a prova visual completa da Fatia 1.
+
+Depois de "ver funcionando"
+Me diga:
+
+Qual teste você rodou? Todos, ou só alguns?
+
+O Wokwi está rodando? (para o Teste 2 e 3 fazerem sentido)
+
+Confirma que o Zabbix e o Grafana abrem sem erro?
+
+Com os testes validados, fechamos a Fatia 1 oficialmente e partimos para a Fatia 2 — a mais interessante, porque é onde os dados saem do terminal e entram no Zabbix, virando gráficos. 🚀
+
+🎉 O Zabbix está vivo e funcionando!
+A sua captura de tela prova que o Passo 0 e a Fatia 1 estão 100% concluídos. Repare no que temos:
+
+Versão: Zabbix 7.0.32 (a versão LTS que planejamos).
+
+Hosts: 1 habilitado (o Zabbix server, padrão da instalação).
+
+Itens: 121 no total (sendo 11 "não suportados" — o padrão que não conseguem ler).
+
+Gráfico "Values per second": O Zabbix está processando 1.08 valores por segundo nativamente.
+
+Current problems: O erro laranja Linux: Zabbix agent is not available (for 3m) é normal e esperado. O container do Zabbix tenta monitorar a si mesmo na porta 127.0.0.1:10050, mas não tem um agente instalado dentro dele. Isso não afeta em nada o nosso laboratório.
+
+O que isso significa na prática?
+A "máquina" está ligada. O painel de controle está funcionando. Mas o ESP32 ainda não está aparecendo ali (a lista de hosts só tem 1).
+
+Essa é exatamente a missão da Fatia 2: fazer o Zabbix enxergar os dados do publico/rack_monitor_ABCD1234/status que já estão chegando no Mosquitto.
+
+Vamos fechar a Fatia 1 no papel
+Antes de começarmos a Fatia 2, atualize o 00-plano.md para marcar a Fatia 1 como concluída:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/docs/00-plano.md
+Mude de:
+- [ ] 1. Ponte MQTT: Wokwi -> broker público -> Mosquitto local
+Para:
+- [x] 1. Ponte MQTT: Wokwi -> broker público -> Mosquitto local
+
+Salve e feche.
+
+Iniciando a Fatia 2 — Ingestão no Zabbix (via Interface)
+Como combinamos, faremos pela interface web para você entender o modelo do Zabbix.
+
+Passo 2.1 — Confirmar a rede do Docker
+Rode este comando no terminal:
+
+bash
+docker compose exec zabbix-server getent hosts cpd-mosquitto
+O que deve aparecer: O IP do container (ex: 172.18.0.3 cpd-mosquitto).
+Isso prova que o Zabbix consegue se comunicar com o Mosquitto internamente pelo nome do serviço.
+
+Passo 2.2 — Criar o Host no Zabbix
+Na interface do Zabbix (localhost:8080), no menu lateral esquerdo, vá em Data collection (Coleta de dados) → Hosts.
+
+Clique no botão azul no canto superior direito: Create host.
+
+Preencha assim:
+
+Host name: esp32-cpd
+
+Visible name: Rack CPD (é o nome bonito que aparecerá nos painéis)
+
+Groups: Clique em Select e escolha Virtual machines (ou crie um grupo novo clicando em New group chamado CPD). Vou sugerir CPD.
+
+Interfaces: Clique em "Remove" e apague essa linha. O ESP32 via MQTT não tem interface IP, então deixe zero interfaces. Se você deixar, o Zabbix vai tentar pingar e vai dar erro.
+
+Clique em Add no final da página.
+
+Passo 2.3 — Criar o Item Mestre (O "ouvido" do Zabbix)
+Ainda na lista de Hosts, clique no nome esp32-cpd.
+
+No menu do host, clique em Items e depois no botão Create item (canto superior direito).
+
+Preencha os campos principais:
+
+Name: MQTT Status
+
+Type: MQTT agent (Role o menu para achar, ele fica perto do final da lista).
+
+Key: mqtt.status (sem espaços, é o identificador técnico).
+
+Type of information: Text (o dado que chega é um JSON inteiro, então é texto).
+
+Host interface: Deixe como está (vazio).
+
+Broker server: Vá na aba MQTT (ou "MQTT broker") que aparece no menu do item:
+
+Broker: cpd-mosquitto:1883 (o Zabbix usa o nome do serviço e porta, não IP)
+
+Topic: publico/rack_monitor_ABCD1234/status
+
+Username / Password: deixe em branco (nosso Mosquitto é anônimo).
+
+Vá na aba Preprocessing (Pré-processamento) e adicione:
+
+Nome: JSONPath
+
+Parâmetro: $. (não mude ainda, vamos usar o JSONPath nos dependentes, mas é bom validar se o item mestre está capturando a string inteira).
+Na verdade, para o mestre, a melhor prática é NÃO usar JSONPath. Deixe o mestre apenas puxar o texto bruto. Vou te orientar a não colocar preprocessamento no mestre.
+
+Clique em Add.
+
+Passo 2.4 — Validar o Item Mestre
+No painel lateral esquerdo, vá em Monitoring → Latest data.
+
+No filtro de Host, digite esp32-cpd.
+
+Clique em Apply (ou pressione Enter).
+
+Você deve ver o item MQTT Status (ou mqtt.status) com a data e hora "há alguns segundos".
+
+Para ver o JSON completo: Clique no nome do item, depois no botão History (ou no valor que aparecer).
+
+Se o item estiver "Not supported" (ícone vermelho): Cancele e vamos investigar. Pode ser que o nome do broker ou do tópico estejam incorretos.
+Se estiver funcionando: Você verá o JSON inteiro, igualzinho ao que apareceu no mosquitto_sub.
+
+Me diga:
+
+O getent hosts retornou o IP?
+
+O que apareceu na tela de Latest data? (Está mostrando o JSON verde ou deu erro vermelho?)
+
+Com isso validado, criamos os itens dependentes (temperatura, porta, etc.) e a Fatia 2 estará pronta!
+
+🎯 Tela de criação do Host — Perfeito
+Reparei que o campo Interfaces já está com No interfaces are defined. — isso está exatamente certo! (O Zabbix já entendeu que não precisa de IP para este host).
+
+Antes de clicar em Add, notei que o campo Host groups está vazio (tem uma setinha vermelha de obrigatório).
+
+O Zabbix não permite criar um host sem grupo.
+
+O que fazer agora
+1. Criar o grupo (se ainda não existir)
+No campo Host groups, clique no botão Select ao lado.
+Na janela que abrir:
+
+No canto inferior esquerdo, clique no botão + Create new group (ou "Create group").
+
+Digite: CPD
+
+Clique em Add ou Create.
+
+Selecione o grupo CPD na lista e clique em Select.
+
+2. Preencher os outros campos (se ainda não fez)
+Host name: esp32-cpd
+
+Visible name: Rack CPD
+
+Description: (opcional, mas útil) ESP32 do rack via MQTT (Wokwi)
+
+Templates: deixe vazio por enquanto. (Na fatia 5 vamos criar um template para isso).
+
+Monitored by: deixe Server selecionado.
+
+3. Salvar
+Clique em Add no canto inferior direito.
+
+Próximo passo (Passo 2.3)
+Depois de clicar em Add, você será levado à tela de configuração do host esp32-cpd.
+
+Para criar o Item Mestre (o que vai ler o JSON):
+
+Clique na aba Items (na barra lateral esquerda do host, ou no topo da tela).
+
+Clique no botão azul Create item (canto superior direito).
+
+Preencha os campos como no guia anterior:
+
+Name: MQTT Status
+
+Type: MQTT agent (procure na lista)
+
+Key: mqtt.status
+
+Type of information: Text
+
+Broker: cpd-mosquitto:1883 (na aba "MQTT broker" do item)
+
+Topic: publico/rack_monitor_ABCD1234/status
+
+Username / Password: vazio (broker anônimo)
+
+Me diga:
+
+Conseguiu criar o grupo CPD e salvar o host?
+
+Ao clicar em Items e Create item, o campo Type tem a opção MQTT agent? (Se não tiver, precisamos ver a versão, mas o Zabbix 7.0 tem nativo).
+
+🎯 A janela de grupos está aberta — mas falta criar o CPD
+Você abriu a janela de seleção de grupos, mas o grupo "CPD" ainda não existe. Só aparecem os grupos padrão do Zabbix.
+
+Para criar um novo grupo direto nesta janela, procure um botão no canto inferior esquerdo (geralmente fica abaixo da lista, do lado esquerdo do botão Select) escrito Create group ou +.
+
+Se não achar esse botão, cancele esta janela (Cancel), salve o host assim mesmo usando o grupo Virtual machines (só para não travar), e crie o grupo depois. Mas o ideal é criar agora.
+
+Como criar o grupo nesta tela
+Na janela que está aberta, olhe para o canto inferior esquerdo. Deve ter um botão discreto escrito Create group.
+
+Clique nele.
+
+Vai abrir uma caixinha de texto. Digite: CPD
+
+Clique em Add ou Create.
+
+O grupo CPD vai aparecer na lista com um checkbox. Marque-o.
+
+Clique no botão azul Select.
+
+Se você não achar o botão "Create group"
+O Zabbix 7.0 às vezes esconde esse botão em telas muito pequenas. Se não achar:
+
+Clique em Cancel nesta janela de grupos.
+
+No menu lateral esquerdo do Zabbix, vá em Data collection → Host groups.
+
+Clique em Create host group (canto superior direito).
+
+Nome: CPD. Clique em Add.
+
+Volte para a tela de criação do host (Data collection → Hosts → Create host).
+
+Repita o preenchimento, e agora o grupo CPD vai aparecer na lista.
+
+Me diga:
+
+Achou o botão Create group na janela?
+
+Conseguiu criar o grupo e salvar o host esp32-cpd?
+
+Assim que o host estiver criado, partimos para o Item Mestre (o que vai ler o JSON do Mosquitto).
+
+🎯 Quase lá! Só um ajuste fino no grupo
+Você selecionou o grupo Virtual machines. Isso vai funcionar e o botão Add vai habilitar, mas não é o ideal para o nosso projeto. O Virtual machines é um grupo padrão do Zabbix para máquinas virtuais. O seu ESP32 é um dispositivo físico (simulado no Wokwi) e merece um grupo próprio.
+
+Você tem duas opções:
+
+Opção A (Rápida): Só seguir com Virtual machines
+Se você quiser agilidade, pode simplesmente clicar em Add agora. O Zabbix vai criar o host. Nós podemos reorganizar o grupo depois (ou deixar assim, é só uma etiqueta).
+
+Opção B (Recomendada): Criar o grupo CPD
+Clique no X ao lado de Virtual machines para removê-lo.
+
+Clique em Select novamente.
+
+Na janela que abrir, procure o botão Create group no canto inferior esquerdo (pode estar bem discreto, como um texto azul).
+
+Se não achar, clique em Cancel, vá no menu esquerdo em Data collection → Host groups → Create host group no canto superior direito. Crie o grupo CPD. Depois volte para criar o host.
+
+Depois de criar o host
+Assim que clicar em Add e o host esp32-cpd aparecer na lista:
+
+Clique no nome esp32-cpd para abrir os detalhes.
+
+No menu do host (barra superior ou lateral), clique em Items.
+
+Clique em Create item (canto superior direito).
+
+Vamos criar o item mestre MQTT! Preencha:
+
+Name: MQTT Status
+
+Type: MQTT agent (role a lista para baixo)
+
+Key: mqtt.status
+
+Type of information: Text
+
+Broker server: cpd-mosquitto:1883
+
+Topic: publico/rack_monitor_ABCD1234/status
+
+Username / Password: deixe em branco
+
+Me diga: Qual opção você escolheu para o grupo? E conseguiu clicar em Add para criar o host?
+
+🎉 Grupo CPD (new) criado com sucesso!
+A tela está perfeita. Vou destacar os pontos para você confirmar que está tudo certo:
+
+✅ Host name: esp32-cpd
+
+✅ Visible name: Rack CPD
+
+✅ Host groups: CPD (new) — o Zabbix vai criar o grupo automaticamente ao salvar.
+
+✅ Interfaces: No interfaces are defined. (correto, não precisa de IP!)
+
+✅ Monitored by: Server
+
+✅ Enabled: marcado
+
+Pode clicar no botão azul Add!
+
+Depois de clicar em Add
+Assim que o host for criado, a tela vai voltar para a lista de Hosts. Você verá o Rack CPD na lista.
+
+Agora vamos criar o Item Mestre:
+
+Clique no nome Rack CPD (ou esp32-cpd) na lista.
+
+Vai abrir a tela de configuração do host. Procure a aba Items (geralmente fica logo abaixo do nome do host, junto com "Host", "Triggers", "Graphs", etc.).
+
+Clique no botão azul Create item (canto superior direito).
+
+Preencha os campos principais:
+
+Name: MQTT Status
+
+Type: role a lista até achar MQTT agent (no Zabbix 7.0, ele fica na lista de tipos nativos).
+
+Key: mqtt.status (sem espaços)
+
+Type of information: Text
+
+Host interface: (deve ficar vazio automaticamente)
+
+Role a página para baixo até a seção MQTT broker (ou aba MQTT, depende da tela):
+
+Broker: cpd-mosquitto:1883
+
+Topic: publico/rack_monitor_ABCD1234/status
+
+Username / Password: deixe em branco
+
+Clique em Add no final da página.
+
+Me diga:
+
+Clicou em Add e o host foi criado?
+
+Ao clicar em Create item, você achou o tipo MQTT agent na lista?
+
+Preencheu os campos do broker e tópico? Deu algum erro ao salvar?
+
+⚠️ Dois ajustes importantes na tela de Item
+Reparei em dois pontos na sua captura que vão impedir o item de funcionar:
+
+1. O Tipo (Type) está errado
+Você selecionou Zabbix agent. Como o nosso host esp32-cpd não tem interface (nós removemos no passo anterior), esse tipo vai dar erro de "No interface found".
+
+Correção: No campo Type, clique na setinha e procure por MQTT agent. Ele fica na lista de tipos, próximo ao final. Se você selecionar MQTT agent, os campos de "Host interface" somem e aparecem os campos do broker (Broker, Topic, etc.).
+
+2. O Update interval está 1m
+Isso significa que ele vai buscar o dado apenas 1 vez por minuto. Como o firmware publica a cada 30s, você vai perder metade dos dados.
+
+Correção: No campo Update interval, troque 1m por 30s.
+
+(Ah, e apague aquele "Custom intervals" que você criou clicando em Remove no lado direito da linha 50s, para não confundir o Zabbix).
+
+Como deve ficar a tela depois de corrigir
+Name: MQTT Status
+
+Type: MQTT agent (clique na setinha e selecione)
+
+Key: mqtt.status
+
+Type of information: Text
+
+Update interval: 30s
+
+History: Store up to 31d
+
+Quando você mudar o Type para MQTT agent, a tela vai recarregar e mostrar campos novos (Broker, Topic). Aí você preenche:
+
+Broker server: cpd-mosquitto:1883
+
+Topic: publico/rack_monitor_ABCD1234/status
+
+Username: (deixe em branco)
+
+Password: (deixe em branco)
+
+Me diga:
+
+Achou o MQTT agent na lista de Type?
+
+A tela recarregou mostrando os campos do Broker e Topic?
+
+Conseguiu preencher e salvar clicando em Add?
+
+Não tem MQTT agente !
+Encontrados 13 resultados
+Entendi o problema. O Zabbix não tem um tipo de item chamado "MQTT agent" nativo na interface web. O que existe é o Zabbix Agent 2 com um plugin MQTT embutido .
+
+A confusão é comum: o Zabbix 7.0 não tem "MQTT agent" como um tipo separado. O caminho correto é usar o Zabbix agent (active) e a chave mqtt.get[...] .
+
+O que fazer agora
+1. Mude o Type do item para Zabbix agent (active)
+Na tela de criação do item, no campo Type, selecione Zabbix agent (active) em vez de Zabbix agent.
+
+2. A Key precisa ser trocada
+Apague mqtt.status e use a sintaxe correta do plugin MQTT:
+
+text
+mqtt.get["cpd-mosquitto:1883","publico/rack_monitor_ABCD1234/status"]
+O formato é: mqtt.get[broker, tópico, usuário, senha]. Como o nosso broker é anônimo, usuário e senha ficam de fora .
+
+3. Ajuste o Update interval para 30s
+O firmware publica a cada 30 segundos. Se deixar 1m, você perde metade das mensagens. Coloque 30s.
+
+4. Remova o Custom interval
+Aquela linha 50s que você adicionou não é necessária. Clique em Remove para apagá-la.
+
+5. O Type of information
+Deixe como Text. O item vai receber o JSON inteiro como texto.
+
+Um detalhe importante sobre o "active"
+O Zabbix Agent 2 precisa estar rodando em algum lugar para executar essa checagem. No nosso caso, o próprio container zabbix-server tem o Agent 2? Não. O container do server não inclui o Agent 2 por padrão.
+
+Isso significa que o item ainda não vai funcionar só com essa mudança. Precisamos garantir que exista um Zabbix Agent 2 rodando em algum lugar que consiga alcançar o cpd-mosquitto:1883 e que o Zabbix Server consiga alcançar esse agente.
+
+O caminho mais simples para o laboratório
+Adicionar um serviço Zabbix Agent 2 no docker-compose.yml, na mesma rede cpd-net. Ele vai:
+
+Rodar ao lado do Mosquitto e do Zabbix Server
+
+Ter o plugin MQTT embutido (já vem pronto) 
+
+Ser a "ponte" que executa mqtt.get e entrega os dados ao Server
+
+Quer que eu te passe o bloco do docker-compose.yml para adicionar o Agent 2? São ~10 linhas, e depois o item mqtt.get vai funcionar de verdade.
+
+Encontrados 14 resultados
+Você está quase lá. O erro na sua captura é claro: o campo Key ainda está mqtt.status, mas o tipo agora é Zabbix agent (active). O Zabbix Agent 2 não reconhece essa chave; ele espera a sintaxe específica do plugin MQTT.
+
+O que corrigir agora
+Mude a Key para a sintaxe correta:
+No campo Key, apague mqtt.status e coloque exatamente isto (com as aspas):
+
+text
+mqtt.get["tcp://cpd-mosquitto:1883","publico/rack_monitor_ABCD1234/status"]
+Nota: O tcp:// antes do endereço é importante para o Agent 2. 
+
+Preencha o Host Interface:
+Repare que o campo Host interface está marcado com * No interface found em vermelho. O Zabbix não permite salvar um item do tipo "Zabbix agent (active)" sem uma interface associada ao host, mesmo que o dado venha do MQTT.
+
+Solução: Clique no botão Select ao lado de Host interface (ou cancele este item e vá em Data collection → Hosts → esp32-cpd → Interfaces). Adicione uma interface qualquer (pode ser um IP fake, como 127.0.0.1, porta 10050). Ela não será usada para a coleta MQTT, mas o Zabbix exige que exista para o formulário aceitar o item. 
+
+Salve:
+Clique em Add.
+
+O que vai acontecer depois de salvar
+O item pode aparecer como "Not supported" (vermelho) por alguns instantes. Isso é normal e esperado. O Zabbix Agent 2 só vai mudar o status para "Enabled" (verde) depois que ele receber a primeira mensagem no tópico MQTT.
+
+Como o seu Wokwi publica a cada 30 segundos, aguarde até um minuto e atualize a página. Se o status ficar verde, funcionou.
+
+Se continuar vermelho
+Se após 2 minutos o item continuar "Not supported", verifique o log do Agent 2 (se você adicionou o container) ou me avise. O erro mais comum é o Agent 2 não conseguir resolver o nome cpd-mosquitto ou o tópico estar incorreto.
+
+Me diga:
+
+Você conseguiu adicionar a interface fake no host para liberar o campo vermelho?
+
+A Key foi alterada para a sintaxe mqtt.get[...]?
+
+Depois de salvar, o item ficou verde ou vermelho?
+
+🛑 Pare! Vamos simplificar essa arquitetura (e resolver de vez)
+Percebi dois problemas na sua tela e um problema estrutural maior que eu preciso corrigir na minha orientação anterior:
+
+1. O erro na tela
+A caixa vermelha na Key indica que o Zabbix não aceitou a sintaxe, e o campo Update interval sumiu (foi engolido pelo erro). Além disso, o Zabbix exige uma Interface para o tipo "Agent (active)", e você não tem uma.
+
+2. O problema estrutural
+Para o mqtt.get funcionar, é obrigatório ter um container do Zabbix Agent 2 rodando na mesma rede. Nós não subimos esse container no Passo 0. Portanto, esse item nunca vai ficar verde só com as configurações da interface web.
+
+A solução definitiva: Mudar o Type para Script
+O Zabbix tem uma forma nativa e muito mais simples de ler MQTT sem precisar instalar o Agent 2: usar o item do tipo Script e executar um comando mosquitto_sub direto do servidor Zabbix. O container do Zabbix Server tem Linux e tem acesso à internet, então ele consegue rodar comandos.
+
+Vamos fazer isso:
+
+Cancele a criação desse item atual (clique em Cancel).
+
+Edite o arquivo docker-compose.yml no seu Mac para instalar o cliente MQTT no Zabbix Server.
+Abra o arquivo:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/docker-compose.yml
+Encontre o bloco do zabbix-server: e adicione a linha user: root logo abaixo de image: e adicione o command: para instalar o mosquitto-clients. O bloco deve ficar assim:
+
+yaml
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    container_name: cpd-zabbix-server
+    user: root
+    command: >
+      sh -c "apk add --no-cache mosquitto-clients && /usr/bin/docker-entrypoint.sh"
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: postgres
+      # ... resto igual
+Reinicie o Zabbix para instalar o cliente:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose up -d zabbix-server
+(Isso pode demorar 1 ou 2 minutos. Você pode acompanhar com docker compose logs -f zabbix-server. Quando parar de aparecer texto e o log estabilizar, deu certo).
+
+Crie o item novamente:
+
+Name: MQTT Status
+
+Type: Script
+
+Key: mqtt.status
+
+Type of information: Text
+
+Update interval: 30s
+
+Execute script:
+Cole exatamente este comando (é uma única linha):
+
+bash
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Clique em Add.
+
+Por que isso vai funcionar?
+O comando mosquitto_sub fica "escutando" o Mosquitto. O -C 1 diz para ele capturar 1 mensagem e sair (evitando que o Zabbix trave esperando para sempre). O -W 5 diz que, se em 5 segundos não chegar mensagem, ele aborta com erro.
+
+Como o Wokwi publica a cada 30s, se o item rodar 30s, 60s, 90s... em algum momento ele vai pegar o JSON recém-publicado e retornar como texto para o Zabbix.
+
+Vamos fazer essa alteração no compose e me diga quando o docker compose up -d zabbix-server terminar. Aí criamos o item!
+
+docker-compose.yml esta assim, como deve ficar?
+🛠️ Correção do docker-compose.yml
+O arquivo que você me mandou é o original, sem as modificações. Para que o item do tipo Script funcione, precisamos fazer duas coisas no Zabbix Server:
+
+Mudar para o usuário root (para poder instalar pacotes e rodar o mosquitto_sub).
+
+Usar um script de inicialização que instala o pacote mosquitto-clients (que contém o comando mosquitto_sub) e depois inicia o Zabbix normalmente.
+
+Além disso, descobri que a imagem do Zabbix não tem o apk disponível diretamente. O jeito mais limpo e rápido de fazer isso sem precisar criar um Dockerfile do zero é usar um comando na inicialização que baixa o pacote e o instala manualmente.
+
+Substitua todo o conteúdo do seu docker-compose.yml por este:
+
+yaml
+# monitoramento-cpd/docker-compose.yml
+# Passo 0 — base: Mosquitto + Zabbix (server/web) + Grafana + Postgres
+
+services:
+  # ---------------------------------------------------------------
+  # Broker MQTT local
+  # ---------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: cpd-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - cpd-net
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/broker/version' -C 1 -W 2 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------
+  # Banco de dados do Zabbix
+  # ---------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: cpd-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cpd-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------
+  # Zabbix Server (Modificado para instalar o mosquitto-clients)
+  # ---------------------------------------------------------------
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    container_name: cpd-zabbix-server
+    restart: unless-stopped
+    user: root
+    # O comando abaixo baixa o pacote do Alpine Linux e o instala antes de iniciar o Zabbix
+    command: >
+      sh -c "
+      apk add --no-cache mosquitto-clients || (echo 'Falha ao instalar mosquitto-clients' && exit 1);
+      /usr/bin/docker-entrypoint.sh
+      "
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "10051:10051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cpd-net
+
+  # ---------------------------------------------------------------
+  # Zabbix Web — interface + API
+  # ---------------------------------------------------------------
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
+    container_name: cpd-zabbix-web
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PHP_TZ: America/Sao_Paulo
+    ports:
+      - "8080:8080"
+    depends_on:
+      - zabbix-server
+      - postgres
+    networks:
+      - cpd-net
+
+  # ---------------------------------------------------------------
+  # Grafana
+  # ---------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:13.2.5
+    container_name: cpd-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - cpd-net
+
+networks:
+  cpd-net:
+    driver: bridge
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  postgres_data:
+  grafana_data:
+O que fazer agora
+Salve o arquivo.
+
+Recrie o container do Zabbix Server para aplicar as mudanças:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose up -d --force-recreate zabbix-server
+Acompanhe o log para ver se a instalação do mosquitto-clients deu certo:
+
+bash
+docker compose logs -f zabbix-server
+(Procure por linhas como fetch https://dl-cdn.alpinelinux.org/... e OK. Quando o log começar a mostrar mensagens do Zabbix (ex: starting server #0), pode dar Ctrl+C).
+
+Depois de reiniciar, volte para a tela de criação do item no Zabbix Web e preencha:
+
+Name: MQTT Status
+
+Type: Script
+
+Key: mqtt.status
+
+Type of information: Text
+
+Update interval: 30s
+
+Execute script:
+
+bash
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Clique em Add.
+
+Me diga: O docker compose up recriou o container sem erros? E na interface, o tipo Script está disponível?
+
+🛑 Mea culpa! O comando sobrescreveu o script de inicialização
+O log mostra o problema: o comando que passei substituiu o script padrão de inicialização do Zabbix (/usr/bin/docker-entrypoint.sh) por um comando em linha. O Zabbix até instalou o mosquitto-clients com sucesso (OK: 63.9 MiB in 85 packages), mas o script de entrada original tentou rodar e falhou com o erro "LogType" "console" parameter can only be used with the -f..., entrando em loop de reinício.
+
+Vamos corrigir o docker-compose.yml de forma definitiva, usando um script de inicialização próprio. Assim o Zabbix começa limpo, instala o cliente MQTT, e depois roda o script original.
+
+1. Corrija o docker-compose.yml
+Substitua o bloco zabbix-server inteiro por este (o resto do arquivo permanece igual):
+
+yaml
+  # ---------------------------------------------------------------
+  # Zabbix Server
+  # ---------------------------------------------------------------
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    container_name: cpd-zabbix-server
+    restart: unless-stopped
+    user: root
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache mosquitto-clients || exit 1
+        exec /usr/bin/docker-entrypoint.sh
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      ZBX_ENABLE_SNMP_TRAPPER: "false"
+    ports:
+      - "10051:10051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cpd-net
+2. Recrie o container
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose down
+docker compose up -d
+3. Verifique a saúde do Zabbix
+bash
+docker compose logs --tail=40 zabbix-server
+Agora deve aparecer server #0 started e o container deve ficar Up. Se continuar reiniciando, o log mostrará o motivo real (pode ser que a instalação do mosquitto tenha demorado mais que o healthcheck padrão, mas com o exec isso é resolvido).
+
+4. (Depois que o Zabbix estabilizar) Crie o item novamente
+Type: Script
+
+Key: mqtt.status
+
+Execute script:
+
+bash
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Me diga:
+
+O docker compose up -d subiu os containers sem loop de reinício?
+
+O log do zabbix-server mostrou server #0 started?
+
+🛑 O loop persiste — o problema é a diretiva -f do command:
+O docker compose down + up -d recriou tudo, mas o container do Zabbix continua reiniciando. E o erro é sempre o mesmo:
+
+text
+zabbix_server [1]: ERROR: "LogType" "console" parameter can only be used with the -f (--foreground) command line option
+Por que isso acontece: o script docker-entrypoint.sh do Zabbix, quando executado com exec e sem o parâmetro -f, configura o log para console mas não passa o modo foreground. O Zabbix detecta a inconsistência e aborta de propósito (para evitar loop de log em arquivo). Isso é comportamento padrão da imagem zabbix/zabbix-server-pgsql — não é bug do nosso compose.
+
+A solução correta é usar um script wrapper que instala o mosquitto-clients e chama o docker-entrypoint.sh com -f para o Zabbix server. Mas o jeito mais robusto (e que não depende de investigar o entrypoint) é usar um Dockerfile customizado que estende a imagem oficial. É o que faremos agora.
+
+Solução definitiva: Dockerfile customizado
+1. Crie a pasta zabbix-server-custom/
+bash
+mkdir -p ~/Desktop/monitoramento-cpd/zabbix-server-custom
+2. Crie o Dockerfile dentro dela
+bash
+cat > ~/Desktop/monitoramento-cpd/zabbix-server-custom/Dockerfile << 'EOF'
+FROM zabbix/zabbix-server-pgsql:alpine-7.0-latest
+
+USER root
+
+# Instala o mosquitto-clients (para o item do tipo Script usar mosquitto_sub)
+RUN apk add --no-cache mosquitto-clients
+
+# Volta ao usuário padrão da imagem (zabbix)
+USER zabbix
+EOF
+3. Altere o docker-compose.yml
+No bloco zabbix-server:, substitua só o image: e remova o command::
+
+yaml
+  zabbix-server:
+    build:
+      context: ./zabbix-server-custom
+      dockerfile: Dockerfile
+    image: cpd-zabbix-server:custom
+    container_name: cpd-zabbix-server
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "10051:10051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cpd-net
+Pontos importantes:
+
+Trocamos image: por build: — o Compose vai construir localmente.
+
+Removemos user: root e o command: inteiro. A imagem original já sabe se inicializar corretamente quando chamada sem override.
+
+Mantivemos image: cpd-zabbix-server:custom para facilitar o debug (docker images).
+
+4. Reconstrua e suba
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose down
+docker compose build zabbix-server
+docker compose up -d
+5. Verifique
+bash
+docker compose ps zabbix-server
+docker compose logs --tail=20 zabbix-server
+O esperado:
+
+docker compose ps → cpd-zabbix-server Up
+
+Logs terminam com server #0 started [main process] sem loop de reinício
+
+Teste rápido de que o mosquitto_sub está disponível dentro do container:
+
+bash
+docker compose exec zabbix-server mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Se retornar o JSON do status, está tudo pronto para o item Script funcionar.
+
+O que fazer depois
+Com o Zabbix estável e o mosquitto_sub disponível, retome a Fatia 2 criando o item:
+
+Na UI do Zabbix: Data collection → Hosts → esp32-cpd → Items → Create item
+
+Name: MQTT Status
+
+Type: Script
+
+Key: mqtt.status
+
+Type of information: Text
+
+Update interval: 30s
+
+Execute script:
+
+text
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Add
+
+Me diga:
+
+O docker compose build zabbix-server completou sem erro?
+
+O docker compose ps mostra Up (não Restarting)?
+
+O mosquitto_sub dentro do container retornou JSON?
+
+Esta assim, como deve ficar?
+🛠️ Substitua o bloco zabbix-server inteiro
+O arquivo que você colou ainda tem o bloco problemático (com command: e exec). Vamos trocar pela versão com Dockerfile customizado, que é a solução robusta.
+
+O que fazer
+Passo 1 — Criar a pasta e o Dockerfile
+bash
+cd ~/Desktop/monitoramento-cpd
+mkdir -p zabbix-server-custom
+cat > zabbix-server-custom/Dockerfile << 'EOF'
+FROM zabbix/zabbix-server-pgsql:alpine-7.0-latest
+USER root
+RUN apk add --no-cache mosquitto-clients
+USER zabbix
+EOF
+Passo 2 — Editar o docker-compose.yml
+Abra o arquivo:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/docker-compose.yml
+Encontre o bloco zabbix-server: e substitua inteiro (do zabbix-server: até o networks: que vem antes do zabbix-web:) por isto:
+
+yaml
+  # ---------------------------------------------------------------
+  # Zabbix Server (imagem customizada: instala mosquitto-clients)
+  # ---------------------------------------------------------------
+  zabbix-server:
+    build:
+      context: ./zabbix-server-custom
+      dockerfile: Dockerfile
+    image: cpd-zabbix-server:custom
+    container_name: cpd-zabbix-server
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "10051:10051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cpd-net
+Atenção ao que sai:
+
+❌ Remova user: root
+
+❌ Remova entrypoint: ["/bin/sh", "-c"]
+
+❌ Remova o command: inteiro
+
+❌ Remova ZBX_ENABLE_SNMP_TRAPPER: "false" (não é necessário)
+
+O resto do arquivo (mosquitto, postgres, zabbix-web, grafana, networks, volumes) permanece idêntico.
+
+Passo 3 — Reconstruir e subir
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose down
+docker compose build zabbix-server
+docker compose up -d
+O build vai baixar a imagem base de novo (deve estar em cache) e adicionar o mosquitto-clients. Leva 20–60s.
+
+Passo 4 — Verificar
+Aguarde 30s e rode:
+
+bash
+docker compose ps zabbix-server
+Esperado: cpd-zabbix-server Up (sem Restarting).
+
+Log:
+
+bash
+docker compose logs --tail=20 zabbix-server
+Esperado: as últimas linhas terminam com server #0 started [main process] e não aparece "LogType" "console" nem exited with code 1.
+
+Passo 5 — Testar o mosquitto_sub dentro do container
+bash
+docker compose exec zabbix-server mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Esperado: o JSON do status (o mesmo que você viu no mosquitto_sub do Mac).
+
+Se retornar o JSON, está tudo pronto para criar o item Script na interface.
+
+Me diga:
+
+O docker compose build zabbix-server completou sem erro?
+
+O docker compose ps mostra Up (não Restarting)?
+
+O mosquitto_sub dentro do container retornou o JSON?
+
+Com isso, partimos para o item Script na interface — a última peça da Fatia 2.
+
+🎉 Perfeito! O Zabbix está de pé e estável
+O docker compose ps zabbix-server mostra:
+
+text
+cpd-zabbix-server   Up 3 minutes
+Sem Restarting. O loop acabou. O Dockerfile customizado resolveu.
+
+Repare também no build: [2/2] RUN apk add --no-cache mosquitto-clients — o cliente MQTT foi instalado dentro da imagem. E ele ficou no cache, então da próxima vez o build será instantâneo.
+
+Teste rápido antes de voltar para o Zabbix
+Confirme que o mosquitto_sub funciona dentro do container:
+
+bash
+docker compose exec zabbix-server mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Esperado: o JSON do status (aquele com "estado":"NORMAL", "temp_c":24.0, etc.).
+
+Se retornar o JSON → cpd-zabbix-server está pronto para executar o item Script.
+
+Se der erro (Connection refused ou similar) → me manda a saída que a gente depura antes de tocar no Zabbix.
+
+Depois do teste: item Script na interface
+Com o mosquitto_sub confirmado, volte ao Zabbix Web (localhost:8080):
+
+Data collection → Hosts → esp32-cpd → Items → Create item
+
+Name: MQTT Status
+
+Type: Script
+
+Key: mqtt.status
+
+Type of information: Text
+
+Update interval: 30s
+
+Execute script:
+
+text
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Add
+
+Vá em Monitoring → Latest data → esp32-cpd → Apply e confirme que aparece o valor com data recente.
+
+O que já está pronto
+Item	Status
+Mosquitto (broker local)	✅
+Postgres	✅
+Zabbix Server com mosquitto-clients	✅
+Zabbix Web	✅
+Grafana	✅
+Bridge publico/# (Wokwi)	✅
+Host esp32-cpd no Zabbix	✅
+Item Script de leitura MQTT	⏳ agora
+Me diga:
+
+O mosquitto_sub dentro do container retornou o JSON?
+
+Conseguiu criar o item Script sem erro?
+
+O valor apareceu em Latest data (com data recente)?
+
+Se sim, fechamos a Fatia 2 e passamos para os itens dependentes (JSONPath: $.temp_c, $.umid_pct, $.porta, $.modo, etc.) — que transformam esse JSON único em métricas individuais no Zabbix.
+
+❯ docker compose exec zabbix-server mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+{"estado":"NORMAL","modo":"ARMADO","ts":"2026-11-12T10:24:25","time_source":"RTC","nonce":0,"porta":false,"luz":true,"dist_cm":335.9,"ativo":false,"ip":"10.10.0.2","uid":"-","acessos":0,"invasoes":0,"rearmes":0,"alerta_temp":false,"critico_temp":false,"alerta_umid":false,"critico_umid":false,"taxa_temp_alerta":false,"ambiente":"OK","temp_c":24.0,"umid_pct":40.0}
+🎉 JSON retornando! O item Script está pronto para funcionar
+O mosquitto_sub dentro do container do Zabbix retornou o JSON perfeito. Isso confirma:
+
+✅ O container do Zabbix alcança o cpd-mosquitto
+
+✅ O mosquitto_sub está instalado
+
+✅ A bridge está funcionando
+
+✅ O firmware (Wokwi) está publicando
+
+Agora é só colher o que plantamos. Vamos criar o item Script na interface.
+
+Passo a passo — Item Script
+No Zabbix Web (localhost:8080), vá em Data collection → Hosts
+
+Clique em esp32-cpd (ou no nome exibido Rack CPD)
+
+Na barra lateral, clique em Items → Create item
+
+Preencha exatamente assim:
+
+Campo	Valor
+Name	MQTT Status
+Type	Script
+Key	mqtt.status
+Type of information	Text
+Update interval	30s
+History	Store up to 31d
+Role a página até a seção Script (ou Execute script, dependendo da versão da UI)
+
+No campo Execute script, cole exatamente (numa linha só):
+
+bash
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Clique em Add no canto inferior direito
+
+Verificar se funcionou
+Teste 1 — direto no formulário (rápido)
+Antes de salvar, na tela de criação do item, tem um botão Test (ao lado de Add e Cancel):
+
+Clique em Test
+
+Vai abrir uma janela. Confirme os campos e clique em Get value (ou Get value and test)
+
+Se aparecer o JSON → funcionou — pode fechar e clicar em Add
+
+Se não aparecer, me manda o erro que a janela mostrou.
+
+Teste 2 — Latest data (depois de salvar)
+Menu lateral: Monitoring → Latest data
+
+No filtro, digite esp32-cpd e clique em Apply
+
+Você deve ver MQTT Status com data/hora recente (últimos 30s)
+
+Clique no nome do item → History → vê o JSON inteiro
+
+O que esperar como resultado
+No Latest data, o item vai aparecer assim (mais ou menos):
+
+Host	Name	Last value	Last check
+Rack CPD	MQTT Status	{"estado":"NORMAL",...}	Now
+Rack CPD	MQTT Status	{"estado":"NORMAL",...}	30s ago
+Atualizando a página a cada 30s, você vê o ts do JSON mudando e o uptime_s (no heartbeat, se criar esse item) incrementando. Isso prova que o Zabbix está coletando de verdade.
+
+⚠️ Se aparecer "Not supported" (vermelho)
+Se o item ficar vermelho com mensagem de erro, os motivos mais comuns:
+
+Mensagem	Causa	Correção
+Timeout while executing a shell script	O mosquitto_sub demorou mais de 5s	O -W 5 já limita; se persistir, aumente o intervalo do item
+Script is not allowed	O Zabbix não habilitou execução de scripts	Administration → General → Other → Enable global scripts
+Connection refused	Container não alcança o Mosquitto	docker compose exec zabbix-server ping -c 1 cpd-mosquitto
+Saída vazia	Bridge não está publicando	docker compose logs mosquitto
+O que vem depois
+Com o item MQTT Status funcionando, o Zabbix está lendo o JSON bruto. A próxima peça da Fatia 2 é criar os itens dependentes com JSONPath, que transformam esse JSON único em métricas individuais:
+
+$.temp_c → Temperatura (°C, numérico)
+
+$.umid_pct → Umidade (%, numérico)
+
+$.porta → Porta aberta (booleano)
+
+$.modo → Modo (texto: ARMADO/DESARMADO)
+
+$.estado → Estado (texto: NORMAL/AVISO/EMERGENCIA)
+
+$.dist_cm → Distância (cm, numérico)
+
+$.invasoes → Contador de invasões (numérico)
+
+$.ambiente → Estado ambiente (texto: OK/ALERTA/CRÍTICO)
+
+É isso que permite o Zabbix desenhar gráficos de temperatura, disparar alerta de porta, etc.
+
+Me diga:
+
+Clicou em Test antes de salvar? O JSON apareceu?
+
+Salvou o item? Apareceu em Latest data?
+
+Está com a data/hora recente (não parada no passado)?
+
+Com isso confirmado, te passo a lista completa dos itens dependentes (com os JSONPaths exatos) e o próximo passo da Fatia 2. 🚀

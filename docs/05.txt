@@ -1,0 +1,1312 @@
+🎯 Quase perfeito! Apenas dois detalhes
+Na sua tela, o item está 99% configurado. Reparei em dois pontos que precisam de ajuste antes de salvar:
+
+1. O comando no campo Script está truncado
+Olhando a captura, o campo mostra:
+
+text
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_...
+Está aparecendo só o começo. O botão ao lado (ícone de expandir) abre uma janela maior para editar o texto por inteiro.
+
+O que fazer: clique no botão com o quadradinho/ícone de expandir ao lado do campo Script, e cole o comando completo:
+
+bash
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+2. O campo Timeout está em 3s
+O padrão 3s pode ser pouco se a mensagem demorar para chegar (o Wokwi publica a cada 30s, e o -W 5 espera até 5s pela mensagem). Se o mosquitto_sub demorar perto de 3s, o Zabbix aborta o script antes de receber o JSON, e o item fica "Not supported".
+
+O que fazer: no campo Timeout, clique na aba Override e coloque 6s (ou 10s, por segurança).
+
+Como fica a tela final
+Campo	Valor
+Name	MQTT Status
+Type	Script ✅
+Key	mqtt.status ✅
+Type of information	Text ✅
+Parameters	(vazio — não precisa)
+Script	mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Update interval	30s ✅
+Custom intervals	(vazio — remova a linha 50s clicando em Remove)
+Timeout	Global Override 6s
+History	Store up to 31d ✅
+Enabled	✅
+Antes de clicar em Add, teste!
+Corrija o Timeout para 6s
+
+Corrija o Script com o comando completo
+
+Remova o custom interval (50s) — não é necessário
+
+Clique no botão Test (ao lado de Add)
+
+Na janela que abrir, clique em Get value
+
+O esperado: o JSON completo aparece na janela (aquele com "estado":"NORMAL", "temp_c":24.0, etc.).
+
+Se aparecer o JSON → pode fechar a janela e clicar em Add com segurança.
+
+Se der erro → me manda a mensagem da janela que eu te ajudo a corrigir.
+
+Me diga:
+
+O clique no botão ao lado do Script abriu a janela de edição?
+
+O Test → Get value retornou o JSON?
+
+🎯 Faltam só dois ajustes pequenos
+A tela está quase perfeita. O Custom interval já foi removido. Faltam:
+
+1. Corrigir o Timeout
+O campo Timeout está Global / 3s. Como o mosquitto_sub pode demorar até 5s para receber a mensagem, o Zabbix aborta antes.
+
+O que fazer: Clique na aba Override (ao lado de Global) e mude o valor de 3s para 6s.
+
+2. Corrigir o Script (o comando está truncado)
+Repare que o campo Script mostra mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_... — está cortado na visualização.
+
+O que fazer: Clique no ícone de expandir (quadradinho com uma setinha) ao lado direito do campo Script. Na janela que abrir, apague tudo e cole o comando completo:
+
+bash
+mosquitto_sub -h cpd-mosquitto -t "publico/rack_monitor_ABCD1234/status" -C 1 -W 5
+Antes de salvar, use o botão Test!
+A tela tem os botões Add, Test e Cancel no canto inferior direito.
+
+Faça as duas correções acima.
+
+Clique em Test.
+
+Na janela que abrir, clique em Get value.
+
+O esperado: o JSON completo aparece (aquele com "estado":"NORMAL", "temp_c":24.0, etc.).
+
+Se aparecer o JSON: pode fechar a janela de teste e clicar em Add para salvar. O item está pronto!
+
+Se der erro: me manda a mensagem que aparecer na janela de teste, que eu te ajudo a corrigir.
+
+Me diga:
+
+Conseguiu mudar o Timeout para 6s?
+
+O Test → Get value retornou o JSON?
+
+🛑 O erro SyntaxError: unterminated statement é por causa das aspas
+O erro Cannot compile script: SyntaxError: unterminated statement (line 1) acontece porque o Zabbix está tentando interpretar o comando, mas as aspas duplas do tópico ("publico/...") estão confundindo o parser interno dele.
+
+Para o item do tipo Script, o Zabbix não executa um shell completo (como o bash). Ele executa o comando diretamente. Então as aspas duplas não devem existir no campo.
+
+Correção definitiva do Script
+Na tela de criação do item, clique no ícone de expandir ao lado do campo Script (o quadradinho com a setinha).
+
+Apague TUDO e cole exatamente isto (sem aspas duplas, sem aspas simples):
+
+bash
+mosquitto_sub -h cpd-mosquitto -t publico/rack_monitor_ABCD1234/status -C 1 -W 5
+Salve e clique em Test novamente.
+
+Clique em Get value.
+
+O que deve acontecer agora
+O comando vai rodar e, como o Wokwi publica a cada 30s, pode ser que o Get value demore um pouco (até 5s, por causa do -W 5). Se o Wokwi estiver ativo, o JSON vai aparecer no campo Value.
+
+✅ Apareceu o JSON? → Clique em Cancel (na janela de teste), depois em Add para salvar o item.
+
+❌ Ainda deu erro de sintaxe? → Me diga a mensagem exata.
+
+❌ Ficou vazio ou deu timeout? → O Wokwi pode estar pausado ou o tópico está errado.
+
+Me diga:
+
+Colou o comando sem as aspas?
+
+O Test → Get value retornou o JSON ou deu outro erro?
+
+🛑 O erro continua por causa do - no comando
+O erro SyntaxError: unterminated statement significa que o Zabbix está usando um interpretador de JavaScript para tentar ler o comando (ele acha que é um código JS). Isso acontece porque o Zabbix não permite certos caracteres na sintaxe do script.
+
+O problema é o hífen (-) seguido de letras (como em -h, -t, -C). O parser do Zabbix entende isso como operador de subtração ou nome de variável, e quebra.
+
+Para contornar isso de forma definitiva no Zabbix, precisamos mudar a abordagem: em vez de usar o tipo Script com mosquitto_sub, vamos usar o tipo External check (Verificação Externa). Ele executa um script do sistema operacional, sem o parser de JavaScript atrapalhar.
+
+Passo 1 — Criar o script no container do Zabbix
+O Zabbix tem uma pasta específica para scripts externos (/usr/lib/zabbix/externalscripts). Vamos criar um script lá dentro.
+
+Rode este comando no seu terminal (Mac):
+
+bash
+docker compose exec zabbix-server sh -c 'echo "#!/bin/sh" > /usr/lib/zabbix/externalscripts/mqtt_status.sh && echo "mosquitto_sub -h cpd-mosquitto -t publico/rack_monitor_ABCD1234/status -C 1 -W 5" >> /usr/lib/zabbix/externalscripts/mqtt_status.sh && chmod +x /usr/lib/zabbix/externalscripts/mqtt_status.sh'
+(Isso cria o arquivo, coloca o comando dentro e dá permissão de execução).
+
+Passo 2 — Mudar o tipo do Item no Zabbix
+Na tela de criação do item, mude o Type para External check (Verificação Externa).
+
+O campo Key vai mudar de comportamento. Preencha assim:
+
+text
+mqtt_status.sh
+(O Zabbix vai procurar esse nome dentro da pasta externalscripts).
+
+Update interval: 30s
+
+Timeout: mude para Override 10s (deixe como está na sua captura).
+
+Clique em Test → Get value.
+
+O que deve acontecer
+Agora o Zabbix vai executar o script diretamente no sistema (como se você estivesse no terminal), e o JSON deve aparecer no campo Value.
+
+✅ Apareceu o JSON: Clique em Cancel, depois em Add para salvar.
+
+❌ Deu erro de permissão: O script precisa ser executado pelo usuário zabbix. Me avisa que ajustamos as permissões no Dockerfile.
+
+❌ Ficou vazio: Verifique se o Wokwi está rodando (o -W 5 espera 5s pela mensagem).
+
+Me diga:
+
+O comando do Passo 1 rodou sem erro?
+
+Mudou o Type para External check e a Key para mqtt_status.sh?
+
+O teste retornou o JSON?
+
+❯ docker compose exec zabbix-server sh -c 'echo "#!/bin/sh" > /usr/lib/zabbix/externalscripts/mqtt_status.sh && echo "mosquitto_sub -h cpd-mosquitto -t publico/rack_monitor_ABCD1234/status -C 1 -W 5" >> /usr/lib/zabbix/externalscripts/mqtt_status.sh && chmod +x /usr/lib/zabbix/externalscripts/mqtt_status.sh'
+sh: can't create /usr/lib/zabbix/externalscripts/mqtt_status.sh: Permissiondenied
+
+What's next:
+    Debug this Compose error with Gordon → docker ai "help me fix this compose error"
+🛠️ Erro de permissão: o container está rodando como usuário zabbix
+O erro Permission denied acontece porque, após a correção anterior, o Dockerfile volta para o usuário zabbix, que não tem permissão de escrita na pasta /usr/lib/zabbix/externalscripts.
+
+Vamos resolver isso de forma definitiva, já colocando o script na construção da imagem (Dockerfile). Assim ele já nasce com as permissões corretas.
+
+Passo 1 — Atualizar o Dockerfile
+Abra o arquivo:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/zabbix-server-custom/Dockerfile
+Substitua o conteúdo por este:
+
+dockerfile
+FROM zabbix/zabbix-server-pgsql:alpine-7.0-latest
+
+USER root
+
+# Instala o cliente MQTT
+RUN apk add --no-cache mosquitto-clients
+
+# Cria o script externo já com permissão de execução e dono zabbix
+RUN echo '#!/bin/sh' > /usr/lib/zabbix/externalscripts/mqtt_status.sh && \
+    echo 'mosquitto_sub -h cpd-mosquitto -t publico/rack_monitor_ABCD1234/status -C 1 -W 5' >> /usr/lib/zabbix/externalscripts/mqtt_status.sh && \
+    chmod +x /usr/lib/zabbix/externalscripts/mqtt_status.sh && \
+    chown zabbix:zabbix /usr/lib/zabbix/externalscripts/mqtt_status.sh
+
+# Volta ao usuário padrão
+USER zabbix
+Salve e feche.
+
+Passo 2 — Reconstruir e subir
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose down
+docker compose build zabbix-server
+docker compose up -d
+Aguarde uns 30 segundos para o Zabbix subir.
+
+Passo 3 — Testar o script direto no container
+bash
+docker compose exec zabbix-server /usr/lib/zabbix/externalscripts/mqtt_status.sh
+O esperado: o JSON de status do ESP32 (igual ao que vimos antes).
+
+Se aparecer o JSON → o script está funcionando. Agora é só configurar o item no Zabbix.
+
+Passo 4 — Ajustar o Item no Zabbix Web
+Na tela de criação do item:
+
+Type: External check
+
+Key: mqtt_status.sh
+
+Update interval: 30s
+
+Timeout: Override 10s
+
+Clique em Test → Get value.
+
+O esperado: o JSON aparece no campo Value.
+
+Se aparecer → clique em Cancel (fecha o teste) e depois em Add (salva o item).
+
+Me diga:
+
+O docker compose build rodou sem erro?
+
+O script mqtt_status.sh rodou direto no container (Passo 3) e retornou o JSON?
+
+O teste na interface do Zabbix retornou o JSON?
+
+❯ docker compose exec zabbix-server /usr/lib/zabbix/externalscripts/mqtt_status.sh
+{"estado":"NORMAL","modo":"ARMADO","ts":"2026-11-12T10:24:25","time_source":"RTC","nonce":0,"porta":false,"luz":true,"dist_cm":335.9,"ativo":false,"ip":"10.10.0.2","uid":"-","acessos":0,"invasoes":0,"rearmes":0,"alerta_temp":false,"critico_temp":false,"alerta_umid":false,"critico_umid":false,"taxa_temp_alerta":false,"ambiente":"OK","temp_c":24.0,"umid_pct":40.0}
+🎉 Funcionou perfeitamente!
+O script externo rodou no container do Zabbix e retornou o JSON certinho. Agora o Zabbix tem tudo o que precisa para ler o status do ESP32.
+
+Passo Final da Fatia 2 — Criar o Item no Zabbix Web
+Na tela de criação do item (que você já estava), ajuste os campos:
+
+Name: MQTT Status
+
+Type: External check
+
+Key: mqtt_status.sh
+
+Type of information: Text
+
+Update interval: 30s
+
+Timeout: Override 10s (importante, pois o mosquitto_sub pode demorar até 5s)
+
+History: Store up to 31d
+
+Clique em Test (ao lado de Add).
+
+Na janela que abrir, clique em Get value.
+
+O esperado: o JSON completo aparece no campo Value.
+
+Se aparecer o JSON, clique em Cancel (fecha o teste) e depois em Add (salva o item).
+
+Verificar em "Latest data"
+Depois de salvar:
+
+Menu lateral: Monitoring → Latest data
+
+Filtro por host: digite esp32-cpd e clique em Apply
+
+Você deve ver o item MQTT Status com o valor e a data/hora recente (atualizando a cada 30s).
+
+O que acabamos de concluir (Fatia 2 concluída ✅)
+O que fizemos	Status
+Host esp32-cpd criado no Zabbix	✅
+Script mqtt_status.sh instalado no container	✅
+Item External check lendo o tópico MQTT	✅
+Zabbix coletando o JSON do ESP32	✅
+Próximo passo — Itens Dependentes (ainda dentro da Fatia 2)
+Agora que o item mestre está funcionando, precisamos extrair os valores individuais do JSON para que o Zabbix possa criar gráficos e gatilhos.
+
+Vamos criar itens dependentes usando JSONPath. Por exemplo:
+
+$.temp_c → Temperatura (numérico)
+
+$.umid_pct → Umidade (numérico)
+
+$.porta → Porta aberta (booleano)
+
+$.modo → Modo (texto: ARMADO/DESARMADO)
+
+Me diga:
+
+O item MQTT Status apareceu em Latest data com data recente?
+
+Quer que eu te guie na criação dos itens dependentes agora?
+
+Com o item mestre funcionando, o mais difícil já passou. O resto é só repetir o padrão para cada métrica. 🚀
+
+🔍 "No data found" — Vamos investigar
+A tela mostra o filtro correto (Host: Rack CPD, Name: esp32-cpd), mas nenhum dado apareceu. Isso indica que o item foi salvo, mas o Zabbix não conseguiu coletar (ou o item ficou "Not supported").
+
+Vamos fazer três verificações rápidas, na ordem:
+
+1. O item existe e está "Enabled"?
+Vá em Data collection → Hosts.
+
+Clique no host Rack CPD.
+
+Clique em Items na barra lateral.
+
+O item MQTT Status está na lista?
+
+Se sim: repare na coluna Status. Está Enabled (verde) ou Not supported (vermelho)?
+
+Se não: o item não foi salvo. Precisamos recriar.
+
+Se estiver "Not supported" (vermelho): clique no link "Not supported" para ver a mensagem de erro exata.
+
+2. O teste do item funciona?
+Se o item estiver lá:
+
+Na lista de items, clique no nome MQTT Status.
+
+Role até o final e clique em Test.
+
+Na janela, clique em Get value (e depois Get value and test).
+
+O que aparece?
+
+✅ JSON no campo Value → o item funciona, mas talvez precise de um tempo para o "Latest data" popular. Aguarde 60s e recarregue.
+
+❌ Mensagem de erro → me manda a mensagem.
+
+3. O fuso horário pode estar confundindo a tela
+Reparei na sua captura que o "Latest data" está filtrado por Host group: CPD e Host: Rack CPD. Isso está certo. Mas se o item foi criado agora, pode levar até 60 segundos para o primeiro valor aparecer (o Update interval é 30s, e o Zabbix ainda está processando a primeira execução).
+
+Tente:
+
+Aguarde 60s.
+
+Recarregue a página (F5 ou Cmd+R).
+
+Clique em Apply novamente.
+
+Me diga:
+
+O item MQTT Status está na lista de Items do host?
+
+Qual é o Status dele (Enabled ou Not supported)?
+
+O Test → Get value retorna o JSON ou dá erro?
+
+🎯 O item existe e está "Enabled"!
+A tela mostra que o item MQTT Status foi criado, está com status Enabled (verde), com intervalo de 30s, tipo External check e histórico de 31d.
+
+Se ele está habilitado mas o "Latest data" estava vazio, há duas possibilidades:
+
+O Zabbix acabou de coletar (pode ser que a tela tenha carregado antes do primeiro ciclo de 30s).
+
+O Zabbix está com dificuldade para executar o script (talvez falte permissão de execução dentro do container).
+
+Vamos tirar a prova real agora usando o botão Execute now:
+
+Passo 1 — Forçar a coleta
+Na lista de Items (nessa tela que você está), marque a caixinha ao lado de MQTT Status.
+
+Clique no botão Execute now (que fica na barra de botões abaixo da lista).
+
+Aguarde uns 5 segundos.
+
+Passo 2 — Verificar o resultado
+Vá em Monitoring → Latest data.
+
+Filtre por Host Rack CPD e clique em Apply.
+
+Veja se o valor agora aparece.
+
+Se ainda não aparecer, me diga. Aí teremos que verificar se o Zabbix está conseguindo executar o script com as permissões corretas (o usuário zabbix dentro do container precisa ter permissão no arquivo, o que o Dockerfile já configurou, mas pode ter algum detalhe de SELinux ou AppArmor no Mac).
+
+Me diga:
+
+Clicou em Execute now?
+
+O valor apareceu no Latest data agora?
+
+🎉 FATIA 2 CONCLUÍDA COM SUCESSO!
+Olha a prova na sua tela:
+
+Host: Rack CPD
+
+Name: MQTT Status
+
+Last check: 6s (atualizou há 6 segundos!)
+
+Last value: {"estado":"NORMAL"...
+
+O Zabbix está oficialmente coletando dados do seu ESP32! O ciclo de 30 segundos está rodando, e o valor está chegando.
+
+Isso foi um marco gigante: você provou que a ponte (Wokwi → Broker Público → Mosquitto Local → Zabbix) funciona de ponta a ponta. 🎯
+
+O que acabamos de construir até aqui
+Camada	O que está funcionando
+Física	Firmware publicando MQTT no Wokwi
+Rede	Bridge MQTT trazendo os dados para dentro do Docker
+Banco	Zabbix Server armazenando os dados brutos
+Coleta	Script externo lendo o Mosquitto e alimentando o item mestre
+Visual	Painel mostrando o JSON bruto
+Próximo Passo — Itens Dependentes (JSONPath)
+Agora que o item mestre (MQTT Status) está funcionando, precisamos "fatiar" esse JSON em itens individuais para que o Zabbix possa fazer gráficos e gatilhos.
+
+Vamos criar itens dependentes (Dependent items) a partir do MQTT Status. O Zabbix vai pegar o JSON que já chegou e usar JSONPath para extrair os valores.
+
+Como criar o primeiro item dependente (Temperatura)
+Na tela de Items do host Rack CPD, clique no botão azul Create item (canto superior direito).
+
+Preencha assim:
+
+Name: Temperatura
+
+Type: Dependent item (Item dependente)
+
+Key: esp32.temp
+
+Master item: clique em Select e escolha MQTT Status
+
+Type of information: Numeric (float)
+
+Units: °C
+
+Update interval: deixe em branco (ele herda do mestre)
+
+Vá para a aba Preprocessing (Pré-processamento).
+
+Clique em Add e escolha JSONPath.
+
+No campo do parâmetro, coloque exatamente:
+
+text
+$.temp_c
+Clique em Add no final.
+
+Me diga:
+
+Conseguiu abrir a tela de criação do item dependente?
+
+Achou a opção Dependent item no campo Type?
+
+Conseguiu configurar o Master item e o JSONPath?
+
+Assim que você criar o primeiro (Temperatura), eu te passo a lista com todos os outros (umidade, porta, modo, estado, etc.) para você criar em sequência. É um padrão que você vai pegar rápido. 🚀
+
+🎯 Item dependente configurado perfeitamente!
+A tela está exatamente como planejado:
+
+Name: Temperatura
+
+Type: Dependent item
+
+Master item: Rack CPD: MQTT Status
+
+Type of information: Numeric (float)
+
+Units: °C
+
+Agora falta só a parte mais importante: dizer ao Zabbix como extrair a temperatura do JSON.
+
+Passo final antes de salvar (aba Preprocessing)
+Clique na aba Preprocessing (ao lado de Item e Tags, no topo).
+
+Clique no botão Add (que fica abaixo da tabela de pré-processamento).
+
+No dropdown que abrir, escolha JSONPath.
+
+No campo de Parameter, digite exatamente:
+
+text
+$.temp_c
+Clique em Add no canto inferior direito para salvar o item.
+
+O que vai acontecer
+Como o Update interval herda do item mestre (30s), em até 30 segundos o Zabbix vai:
+
+Receber o JSON do MQTT Status
+
+Passar pelo JSONPath ($.temp_c)
+
+Extrair o valor 24.0
+
+Guardar como um número decimal no item Temperatura
+
+Para verificar depois de salvar:
+
+Monitoring → Latest data → filtre por Rack CPD
+
+Você deve ver Temperatura com o valor 24.0 e unidade °C
+
+Me diga:
+
+Achou a aba Preprocessing e adicionou o JSONPath?
+
+Conseguiu salvar o item (clicando em Add)?
+
+O valor da temperatura apareceu no Latest data?
+
+Se sim, o padrão está dominado! Vou te passar a lista completa dos próximos itens (umidade, porta, modo, etc.) para você criar em sequência. 🚀
+
+🎉 Item "Temperatura" criado com sucesso!
+Na sua lista de Items agora aparecem 2 itens:
+
+MQTT Status (External check, Enabled)
+
+MQTT Status: Temperatura (Dependent item, Enabled) ✅
+
+Repare que o Zabbix já adicionou automaticamente o prefixo MQTT Status: no nome do item dependente. Isso é ótimo, pois deixa claro de onde o dado vem.
+
+Agora falta ver se ele está coletando. Vá em Monitoring → Latest data e veja se Temperatura aparece com o valor 24.0 (e unidade °C). Se aparecer, o JSONPath $.temp_c está funcionando perfeitamente.
+
+Próximo Passo — A lista completa de itens dependentes
+Agora que você dominou o padrão, vou te passar a lista pronta para você criar os próximos 7 itens. O processo é sempre o mesmo:
+
+Para cada linha da tabela abaixo:
+
+Clique em Create item
+
+Preencha Name, Type (Dependent item), Key, Master item (MQTT Status), Type of information e Units (se houver)
+
+Vá na aba Preprocessing, clique em Add, escolha JSONPath, coloque o Parâmetro indicado
+
+Clique em Add para salvar
+
+Name	Key	Type of information	Units	JSONPath (Preprocessing)
+Umidade	esp32.umid	Numeric (float)	%	$.umid_pct
+Porta Aberta	esp32.porta	Numeric (unsigned)	(vazio)	$.porta
+Modo	esp32.modo	Character	(vazio)	$.modo
+Estado	esp32.estado	Character	(vazio)	$.estado
+Distância	esp32.distancia	Numeric (float)	cm	$.dist_cm
+Invasões	esp32.invasoes	Numeric (unsigned)	(vazio)	$.invasoes
+Ambiente	esp32.ambiente	Character	(vazio)	$.ambiente
+Nota sobre tipos de informação:
+
+Numeric (float) → números com casas decimais (temperatura, umidade)
+
+Numeric (unsigned) → números inteiros (porta como 0/1, contadores)
+
+Character → texto curto (modo "ARMADO", estado "NORMAL")
+
+Se o campo Units estiver vazio, simplesmente ignore (não preencha).
+
+Nota sobre valores booleanos: o $.porta no JSON vem como true ou false. O Zabbix Numeric (unsigned) não converte isso automaticamente. Solução: no Preprocessing, use o JSONPath primeiro, depois adicione um segundo passo:
+
+Type: Boolean to decimal (se disponível na sua versão)
+
+Ou Type: Custom multiplier com valor 1 — mas o ideal é que o JSON já venha como número.
+
+Alternativa mais simples: aceite Character para esp32.porta por enquanto (vai armazenar a string "true"/"false"). Na Fatia 3 (gatilhos), a gente converte.
+
+Como verificar se está funcionando
+Depois de criar os 7 itens:
+
+Vá em Monitoring → Latest data
+
+Filtre por Rack CPD
+
+Você deve ver 8 itens no total (o MQTT Status + os 7 dependentes)
+
+Os valores devem atualizar a cada 30s
+
+Me diga:
+
+O item Temperatura apareceu no Latest data com o valor 24.0?
+
+Quer criar os 7 itens em sequência? Se sim, me avise quando terminar que eu te guio no próximo passo (gráficos simples + gatilho de temperatura).
+
+Com a Fatia 2 completa, o próximo passo é a Fatia 3 — gatilhos e alertas no Telegram. 🚀
+
+⚠️ O item Temperatura está "Not supported"
+Repare na sua captura:
+
+MQTT Status → última checagem 29s, valor aparecendo ✅
+
+Temperatura → sem valor, com o ícone vermelho (Info com exclamação) ❌
+
+E, mais acima no filtro, o Zabbix mostra State: Normal 1 / Not supported 1. Ou seja, o item dependente foi criado, mas o JSONPath não conseguiu extrair o valor.
+
+O que fazer agora
+1. Descobrir o motivo exato do erro
+Clique no ícone vermelho (a exclamação) na linha Temperatura. Vai abrir um popup com a mensagem de erro do Zabbix.
+
+O que normalmente aparece:
+
+"No data" → o master item ainda não tinha publicado no momento da checagem (raro, pois o master está funcionando)
+
+"Cannot find value in JSON" ou "JSONPath error" → o caminho $.temp_c não bate com nada no JSON
+
+"Invalid value for type of information" → o valor não é numérico (mas temp_c é 24.0, então seria estranho)
+
+2. Verificar o JSON no Zabbix
+Antes de mexer no item, confirme que o JSON que chegou no Zabbix tem o campo temp_c:
+
+Na tela Latest data, clique no nome MQTT Status (o item mestre, que está funcionando).
+
+Vai abrir a janela de histórico. Confirme que o valor tem "temp_c":24.0 visível no texto.
+
+Se aparecer "temp_c":24.0 → o problema está no item dependente.
+Se não aparecer → o problema está no firmware/Wokwi.
+
+3. (Se o JSON estiver correto) Corrigir o item dependente
+Clique no nome Temperatura (na lista de Items, Data collection → Hosts → Rack CPD → Items). Abra a aba Preprocessing e confira o campo:
+
+O JSONPath está exatamente $.temp_c (com $, com ., sem espaços)?
+
+Não tem nenhum outro passo de preprocessing antes ou depois?
+
+Truque: clique no botão Test (ao lado do Add/Cancel na tela do item). O Zabbix vai pedir um JSON de teste. Cole o JSON real do seu ESP32:
+
+json
+{"estado":"NORMAL","modo":"ARMADO","ts":"2026-11-12T10:24:25","time_source":"RTC","nonce":0,"porta":false,"luz":true,"dist_cm":335.9,"ativo":false,"ip":"10.10.0.2","uid":"-","acessos":0,"invasoes":0,"rearmes":0,"alerta_temp":false,"critico_temp":false,"alerta_umid":false,"critico_umid":false,"taxa_temp_alerta":false,"ambiente":"OK","temp_c":24.0,"umid_pct":40.0}
+Clique em Test. O resultado deve ser 24 (número). Se der erro, o problema está no próprio JSONPath.
+
+4. Se nada funcionar — simplificar com "Preprocessamento: JavaScript"
+Como plano B, em vez de JSONPath, use JavaScript no preprocessing:
+
+Vá em Preprocessing do item Temperatura
+
+Remova o JSONPath atual
+
+Adicione um passo do tipo JavaScript
+
+Cole isto no campo:
+
+javascript
+return JSON.parse(value).temp_c;
+Salve e teste.
+
+Me diga:
+
+Clicou no ícone vermelho da linha Temperatura? Qual a mensagem exata?
+
+No Latest data, o valor de MQTT Status tem o campo temp_c?
+
+O botão Test do item Temperatura (com o JSON colado) retorna 24 ou dá erro?
+
+Value of type "string" is not suitable for value type "Numeric (float)". Value "{"estado":"NORMAL","modo":"ARMADO","ts":"2026-11-12T11:49:41","time_source":"RTC","nonce":0,"porta":false,"luz":true,"dist_cm":335.9,"ativo":false,"ip":"10.10.0.2","uid":"-","acessos":0,"invasoes":0,"rearmes":0,"alerta_temp":false,"criti...(truncated)"
+🎯 Achei o problema! O JSONPath não está sendo aplicado
+A mensagem de erro é a chave:
+
+Value of type "string" is not suitable for value type "Numeric (float)". Value "{"estado":"NORMAL"...
+
+O Zabbix está tentando converter o JSON inteiro (uma string enorme) em um número decimal. Isso significa que o JSONPath não foi configurado ou não está sendo executado no item dependente.
+
+A causa provável
+Na tela de criação, a aba Preprocessing provavelmente não foi preenchida (ou o Add do JSONPath não foi clicado). Sem o JSONPath, o item dependente simplesmente copia o valor do item mestre sem transformação.
+
+Correção — passo a passo
+1. Abra o item Temperatura para editar
+Em Data collection → Hosts → Rack CPD → Items, clique no nome Temperatura.
+
+2. Vá para a aba Preprocessing
+Clique na aba Preprocessing (ao lado de Item e Tags).
+
+3. Verifique se há um passo JSONPath
+Se a tabela estiver vazia → é exatamente o problema. Prossiga para o passo 4.
+
+Se já existir JSONPath → verifique se o campo Parameter é exatamente $.temp_c. Se estiver com outro valor, corrija.
+
+4. Adicione o JSONPath
+Clique no botão Add (abaixo da tabela de preprocessing).
+
+No dropdown que abrir, escolha JSONPath.
+
+No campo Parameter, digite (com $, ponto, sem espaços):
+
+text
+$.temp_c
+Não adicione mais nada.
+
+5. Salve
+Clique em Update (canto inferior direito).
+
+6. Aguarde e verifique
+Vá em Monitoring → Latest data, filtre por Rack CPD, e aguarde até 30s (o próximo ciclo do master). O item Temperatura deve mostrar 24 (número) e o ícone vermelho desaparece.
+
+Se o erro persistir
+Use o botão Test dentro do item Temperatura:
+
+Abra o item → clique em Test (ao lado de Update/Cancel)
+
+Na janela que abrir, cole o JSON real do ESP32 no campo "Value" (aquele que está no erro)
+
+Clique em Get value and test
+
+O que deve aparecer:
+
+Se o JSONPath estiver certo: Result: 24 (só o número)
+
+Se estiver errado: mensagem de erro
+
+Alternativa robusta (se o JSONPath continuar teimando)
+Em vez de JSONPath, use JavaScript no preprocessing:
+
+Na aba Preprocessing, remova o JSONPath
+
+Clique em Add, escolha JavaScript
+
+Cole isto:
+
+javascript
+return JSON.parse(value).temp_c;
+Salve e teste.
+
+O JavaScript é mais tolerante a variações de sintaxe e dá o mesmo resultado.
+
+Me diga:
+
+A aba Preprocessing do item Temperatura estava vazia?
+
+Depois de adicionar o JSONPath com $.temp_c, o valor 24 apareceu no Latest data?
+
+O botão Test retorna 24 ou ainda dá erro?
+
+🎯 A aba Preprocessing está vazia! Era isso.
+A captura confirma: a tabela de Preprocessing steps está em branco. O Zabbix está apenas copiando o valor do master (o JSON inteiro) sem transformar em número.
+
+É exatamente isso que causa o erro Value of type "string" is not suitable for value type "Numeric (float)".
+
+Correção — 4 cliques
+Na tela que você está agora (edição do item Temperatura, aba Preprocessing):
+
+Clique no link azul Add (ao lado de "Preprocessing steps").
+
+No dropdown que aparecer, escolha JSONPath.
+
+No campo Parameter que surgir, digite exatamente:
+
+text
+$.temp_c
+Clique em Update (canto inferior direito).
+
+O que vai acontecer
+O Request sent successfully que apareceu agora vai sumir.
+
+Em até 30s (próximo ciclo do master), o Zabbix vai:
+
+Receber o JSON inteiro do MQTT Status
+Aplicar o JSONPath $.temp_c
+Extrair apenas o número 24.0
+Salvar no item Temperatura
+O ícone vermelho desaparece e o Latest data mostra 24 (número).
+
+Se ainda der erro após esse passo
+Use o botão Test dentro do item (na mesma tela, ao lado do Update):
+
+Clique em Test
+
+Cole o JSON real do ESP32 no campo de teste
+
+Clique em Get value and test
+
+Resultado esperado: 24 (número puro).
+
+Se retornar 24 → o JSONPath está correto.
+Se retornar erro → me manda a mensagem que eu te ajudo.
+
+Me diga:
+
+Achou o link Add na aba Preprocessing?
+
+Adicionou o JSONPath com $.temp_c e clicou em Update?
+
+Em 30s, o Latest data mostra a temperatura 24 com o ícone verde?
+
+🎯 Perfeito! Agora sim!
+Olha a aba Preprocessing 1 — o número 1 ao lado indica que você adicionou 1 passo de pré-processamento. O JSONPath está lá.
+
+Repare também que o ícone mudou (não mostra mais "Not supported" na parte de baixo). Vamos confirmar o resultado.
+
+Passo Final — Salvar e verificar
+Clique no botão azul Update (canto inferior esquerdo).
+
+Aguarde até 30 segundos (o Zabbix precisa do próximo ciclo do item mestre).
+
+Vá em Monitoring → Latest data e filtre por Rack CPD.
+
+O que você deve ver:
+
+Temperatura com o valor 24 (ou 24.0) e o ícone verde (não mais vermelho).
+
+Se aparecer o valor, o item está funcionando! ✅
+
+Depois de confirmar, você já dominou o padrão
+Para os próximos 7 itens, é só repetir a mesma receita:
+
+Create item
+
+Type: Dependent item
+
+Master item: MQTT Status
+
+Type of information: Numeric (float) ou Character (conforme a tabela)
+
+Aba Preprocessing: Add → JSONPath → colar o caminho ($.umid_pct, etc.)
+
+Update
+
+Aqui está a tabela novamente para consulta rápida:
+
+Name	Key	Type of information	Units	JSONPath
+Umidade	esp32.umid	Numeric (float)	%	$.umid_pct
+Porta Aberta	esp32.porta	Character	—	$.porta
+Modo	esp32.modo	Character	—	$.modo
+Estado	esp32.estado	Character	—	$.estado
+Distância	esp32.distancia	Numeric (float)	cm	$.dist_cm
+Invasões	esp32.invasoes	Numeric (unsigned)	—	$.invasoes
+Ambiente	esp32.ambiente	Character	—	$.ambiente
+Nota sobre Porta Aberta: escolha Character porque o JSON entrega true/false (string), e Numeric rejeitaria. Na Fatia 3, a gente converte isso com um gatilho.
+
+Me diga:
+
+O Latest data mostra Temperatura com valor 24 e ícone verde?
+
+Quer criar os 7 itens restantes agora? (é só seguir o padrão, e eu te ajudo se algum der erro)
+
+Com isso, a Fatia 2 estará 100% concluída. 🚀
+
+🎉 Agora sim! "Temperatura" está Enabled e verde!
+A tela de Items está limpa:
+
+MQTT Status (External check) — Enabled
+
+MQTT Status: Temperatura (Dependent item) — Enabled ✅ (sem o ícone vermelho de erro)
+
+Isso significa que o JSONPath está funcionando. Agora só falta confirmar que o valor numérico está chegando.
+
+Confirmação rápida no "Latest data"
+Menu lateral: Monitoring → Latest data
+
+Filtre por Host: Rack CPD
+
+Clique em Apply
+
+O que você deve ver agora:
+
+Host	Name	Last check	Last value
+Rack CPD	MQTT Status	29s	{"estado":"NORMAL"...
+Rack CPD	Temperatura	29s	24 ✅
+Se Temperatura mostra 24 (sem as aspas, sem o JSON inteiro) → está funcionando perfeitamente.
+
+🎯 FATIA 2 — Concluída!
+Recapitulando o que você acabou de construir:
+
+Item	Status
+Host esp32-cpd no Zabbix	✅
+Script mqtt_status.sh instalado no container (Dockerfile customizado)	✅
+Item mestre MQTT Status (External check) lendo o tópico publico/rack_monitor_ABCD1234/status	✅
+Item dependente Temperatura com JSONPath $.temp_c	✅
+O pipeline completo está funcionando:
+
+text
+Wokwi (ESP32) → broker.emqx.io → bridge MQTT → Mosquitto local → Zabbix (External check) → Item dependente (JSONPath) → 24°C no banco
+O que vem agora (próximos passos)
+Você tem duas opções para continuar. Me diz qual prefere:
+
+Opção A — Completar os itens dependentes restantes (15 min)
+Criar os 7 itens que faltam (Umidade, Porta, Modo, Estado, Distância, Invasões, Ambiente) para ter todas as métricas do ESP32 no Zabbix. É só repetir o padrão que você já dominou.
+
+Por que fazer: sem esses itens, você não consegue criar gráficos bonitos nem gatilhos de porta aberta/invasão.
+
+Opção B — Pular direto para os gatilhos e Telegram (Fatia 3)
+Criar só o gatilho de temperatura agora e configurar o Telegram. Aí você vê uma notificação chegar no celular ainda hoje.
+
+Por que fazer: é a parte mais recompensadora de ver funcionando, e prova que o sistema de alerta está pronto.
+
+Opção C — Fazer A e depois B (recomendado)
+Completar todos os itens primeiro, depois configurar Telegram para todos os gatilhos de uma vez. Fluxo mais linear.
+
+Me diga:
+
+O Temperatura apareceu com valor 24 no Latest data?
+
+Qual das opções (A, B, C) prefere seguir?
+
+Meu voto: Opção C. Completar os itens agora é rápido (você já sabe o padrão), e a Fatia 3 fica muito mais útil quando todos os dados estão no Zabbix. Mas a decisão é sua. 🚀
+
+Eu vim documentando nossas conversas até agora.
+Elas são inestimáveis.
+Gostaria de criar para cada uma delas que vou te enviar um resumo dos erros e acertos. Minha ideia é que isso progrida para se tormar um README.md perfeito.
+Quem lê-lo, mesmo que não tenha conhecimentos destas ferramentas consiga reproduzir sem dificuldades.
+Na verdade, vai ser até para mim, daqui a um ano já não vou lembrar de mais nada deste projeto. O que acha?
+Acho uma ideia excelente e super profissional.
+
+O que você está fazendo é criar uma Documentação Pós-Morte (Post-Mortem) e um Runbook (manual de operação). Na engenharia de software e infraestrutura, isso é o que separa um "projeto de fim de semana" de um "projeto de nível de produção".
+
+O fato de você querer documentar os erros (os "becos sem saída") é ainda mais valioso do que documentar só os acertos. Quando eu (ou você no futuro) bater no mesmo erro, a resposta já estará lá.
+
+Como podemos estruturar isso para chegar no README perfeito:
+Para que o README final fique impecável, sugiro que os arquivos .txt que você está criando sejam os "bastidores" (nossas anotações cruas) e o README.md seja a "vitrine".
+
+Quando formos montar o README, ele deve ter esta estrutura lógica:
+
+Visão Geral e Arquitetura: Um diagrama simples mostrando Wokwi -> Broker Público -> Mosquitto Local -> Zabbix -> (futuro Grafana).
+
+Pré-requisitos: O que precisa estar instalado (Docker Desktop no Mac, etc).
+
+O Passo a Passo (Happy Path): O caminho das pedras, na ordem exata, sem os erros.
+
+Troubleshooting (A Enciclopédia de Erros): Uma tabela com "Sintoma -> Causa -> Solução". Aqui entra todo o nosso histórico:
+
+O erro do zsh: event not found: ) ao colar o script no Mac.
+
+O erro do local_prefix e remote_username vazio no Mosquitto.
+
+O Zabbix rodando em loop por causa do LogType "console".
+
+O erro do SyntaxError no item tipo Script.
+
+A solução com o Dockerfile customizado instalando o mosquitto-clients.
+
+O JSONPath vazio causando o erro de "string" para "numeric".
+
+Manutenção: Como parar, subir, reiniciar os containers e fazer backup do banco.
+
+O próximo passo para continuar o projeto
+Antes de fazermos o resumo desses arquivos (ou no final de tudo, como você preferir), precisamos terminar a Fatia 2. O seu item de Temperatura já está verde e funcionando.
+
+Me responde a última pergunta que deixei no ar:
+
+O Temperatura apareceu com o valor 24 no Latest data?
+
+Você prefere:
+
+Opção A: Criar os 7 itens dependentes restantes agora (Umidade, Porta, Modo, etc.) para ter todos os dados no Zabbix.
+
+Opção B: Ir direto para o Telegram (Fatia 3) e ver a notificação no celular.
+
+Opção C: Fazer A e depois B (o fluxo completo).
+
+Assim que decidirmos, nós avançamos, e ao final desta etapa eu te ajudo a redigir o resumo dos arquivos .txt e o esqueleto do README.md definitivo.
+
+🎉 PERFEITO! O "Latest data" provou que funcionou!
+Olha a sua tela:
+
+MQTT Status -> Last value: {"estado":"NORMAL"... (o JSON bruto chegando)
+
+Temperatura -> Last value: 24 °C (o valor numérico extraído perfeitamente!)
+
+O Zabbix está lendo o Mosquitto, pegando o JSON, fatiando com o JSONPath e armazenando o dado numérico com a unidade correta. Isso é o coração do monitoramento funcionando!
+
+Vamos para a Opção C (A + B)
+Como você já dominou o padrão, vamos criar os 7 itens dependentes restantes. Vou te dar a "receita" exata para você não perder tempo.
+
+O padrão é sempre o mesmo:
+Create item
+
+Name / Key / Type / Master (tabela abaixo)
+
+Aba Preprocessing: Add -> JSONPath -> Colar o caminho
+
+Update
+
+Tabela para os próximos 7 itens:
+Name	Key	Type of information	Units	JSONPath
+Umidade	esp32.umid	Numeric (float)	%	$.umid_pct
+Porta Aberta	esp32.porta	Character	(vazio)	$.porta
+Modo	esp32.modo	Character	(vazio)	$.modo
+Estado	esp32.estado	Character	(vazio)	$.estado
+Distância	esp32.distancia	Numeric (float)	cm	$.dist_cm
+Invasões	esp32.invasoes	Numeric (unsigned)	(vazio)	$.invasoes
+Ambiente	esp32.ambiente	Character	(vazio)	$.ambiente
+Atenção: Lembre-se de sempre selecionar o Master item como Rack CPD: MQTT Status e deixar o Update interval vazio.
+
+Enquanto você cria os itens: O Resumo que você pediu
+Você mencionou que está documentando as conversas. Para adiantar seu lado (e te ajudar a preencher esses .txt), aqui vai o Resumo de Erros e Acertos do nosso progresso até agora. Você pode copiar e colar isso no seu documento.
+
+Resumo das Fatias 0, 1 e 2 (Fundação e Ingestão)
+O que deu certo (Acertos):
+
+Docker no Mac M4: As imagens rodaram nativamente (arm64) sem necessidade de emulação. O docker compose foi direto.
+
+Isolamento: Usar a rede cpd-net facilitou a comunicação por nome (ex: cpd-mosquitto).
+
+Bridge MQTT: O Mosquitto local conseguiu puxar os dados do broker público (emqx.io) e reinseri-los com o prefixo publico/, isolando o Zabbix da internet.
+
+Dockerfile Customizado: A solução mais limpa para o Zabbix foi criar uma imagem própria (zabbix-server-custom) que já nasce com o mosquitto-clients instalado.
+
+Os erros (que agora viraram aprendizado):
+
+Zsh no macOS: Colar scripts direto no terminal quebrava por causa do caractere !. Solução: Rodar via arquivo .sh ou colocar entre aspas simples.
+
+Mosquitto - include: O Mosquitto 2.x não aceita include. Usamos include_dir apontando para a pasta conf.d/.
+
+Mosquitto - Sintaxe: Deixar remote_username vazio causa erro fatal. E a diretiva local_prefix não existe (o prefixo vai na própria linha do topic).
+
+Zabbix - Loop infinito: Tentar sobrescrever o comando do container com sh -c "apk add... && exec..." quebrou o entrypoint do Zabbix (erro do LogType). Solução: Usar o Dockerfile.
+
+Zabbix - Item Script: O parser de script do Zabbix (que usa um interpretador interno) quebrava com os hífens do mosquitto_sub (SyntaxError). Solução: Mudar o tipo do item para External check e criar o script no Linux do container.
+
+Zabbix - JSONPath: Esquecer de adicionar o passo de Preprocessing faz o Zabbix tentar jogar o JSON inteiro (string) num campo numérico, gerando erro. Solução: Sempre adicionar o JSONPath ($.campo).
+
+Me diga:
+
+Conseguiu criar os 7 itens sem dificuldade? (Se algum der erro vermelho, me avisa)
+
+Quando terminarmos os itens, vamos para o Telegram (Fatia 3). Você já tem o app no celular?
+
+Gostaria muito de saber se podemos criar estes sete itens através de código?
+Com certeza! Essa é a melhor ideia que você teve até agora.
+
+Criar 7 itens pela interface gráfica é demorado, sujeito a erro de digitação e chato de refazer. Criar via código (API do Zabbix) é exatamente o que separa um laboratório de um ambiente profissional. Você vai criar um script que faz tudo em 2 segundos.
+
+O Zabbix tem uma API em JSON-RPC muito poderosa. Vou te passar um script Python que vai:
+
+Fazer login na API do Zabbix.
+
+Descobrir o ID do seu host (esp32-cpd).
+
+Descobrir o ID do item mestre (MQTT Status).
+
+Criar (ou atualizar, se já existirem) os 7 itens dependentes com os JSONPaths corretos.
+
+Passo 1 — Instalar a biblioteca necessária
+No seu Mac, no terminal:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+python3 -m venv .venv
+source .venv/bin/activate
+pip install requests python-dotenv
+(Isso cria um ambiente virtual isolado para não sujar o Python do sistema).
+
+Passo 2 — Adicionar variáveis ao .env
+Abra o .env:
+
+bash
+open -e .env
+E adicione no final:
+
+env
+ZABBIX_URL=http://localhost:8080
+ZABBIX_USER=Admin
+ZABBIX_PASSWORD=zabbix
+Passo 3 — Criar o script configurar_zabbix.py
+Na pasta monitoramento-cpd, crie o arquivo:
+
+bash
+nano configurar_zabbix.py
+(Ou abra no seu editor de texto favorito)
+
+Cole o conteúdo abaixo:
+
+python
+import os
+import requests
+import json
+from dotenv import load_dotenv
+
+# Carrega as variáveis do .env
+load_dotenv()
+
+ZABBIX_URL = os.getenv("ZABBIX_URL")
+ZABBIX_USER = os.getenv("ZABBIX_USER")
+ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD")
+API_URL = f"{ZABBIX_URL}/api_jsonrpc.php"
+
+def zabbix_api_call(method, params, auth_token=None):
+    headers = {"Content-Type": "application/json-rpc"}
+    payload = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params,
+        "id": 1
+    }
+    if auth_token:
+        payload["auth"] = auth_token
+
+    response = requests.post(API_URL, headers=headers, json=payload)
+    response.raise_for_status()
+    result = response.json()
+    
+    if "error" in result:
+        raise Exception(f"Erro na API do Zabbix: {result['error']}")
+    return result["result"]
+
+def main():
+    print("1. Autenticando na API do Zabbix...")
+    auth = zabbix_api_call("user.login", {"username": ZABBIX_USER, "password": ZABBIX_PASSWORD})
+    print("   Login OK!")
+
+    print("2. Buscando o Host 'esp32-cpd'...")
+    hosts = zabbix_api_call("host.get", {"filter": {"host": ["esp32-cpd"]}}, auth)
+    if not hosts:
+        print("   ERRO: Host 'esp32-cpd' não encontrado. Você criou ele na interface?")
+        return
+    host_id = hosts[0]["hostid"]
+    print(f"   Host encontrado. ID: {host_id}")
+
+    print("3. Buscando o Item Mestre 'MQTT Status'...")
+    master_items = zabbix_api_call("item.get", {
+        "hostids": host_id,
+        "filter": {"key_": ["mqtt_status.sh"]}
+    }, auth)
+    if not master_items:
+        print("   ERRO: Item Mestre 'mqtt_status.sh' não encontrado.")
+        return
+    master_item_id = master_items[0]["itemid"]
+    print(f"   Item Mestre encontrado. ID: {master_item_id}")
+
+    # Lista com os 7 itens a serem criados
+    itens_dependentes = [
+        {"name": "Umidade",      "key": "esp32.umid",      "type": 0, "units": "%", "jsonpath": "$.umid_pct"},   # type 0 = float
+        {"name": "Porta Aberta", "key": "esp32.porta",     "type": 4, "units": "",  "jsonpath": "$.porta"},      # type 4 = text
+        {"name": "Modo",         "key": "esp32.modo",      "type": 4, "units": "",  "jsonpath": "$.modo"},
+        {"name": "Estado",       "key": "esp32.estado",    "type": 4, "units": "",  "jsonpath": "$.estado"},
+        {"name": "Distância",    "key": "esp32.distancia", "type": 0, "units": "cm","jsonpath": "$.dist_cm"},
+        {"name": "Invasões",     "key": "esp32.invasoes",  "type": 3, "units": "",  "jsonpath": "$.invasoes"},   # type 3 = unsigned
+        {"name": "Ambiente",     "key": "esp32.ambiente",  "type": 4, "units": "",  "jsonpath": "$.ambiente"},
+    ]
+
+    print("\n4. Criando/Atualizando os 7 itens dependentes...")
+    for item in itens_dependentes:
+        print(f"   -> Criando '{item['name']}' (JSONPath: {item['jsonpath']})...")
+        
+        payload_item = {
+            "hostid": host_id,
+            "name": item["name"],
+            "key_": item["key"],
+            "type": 18,  # Tipo 18 = Dependent Item
+            "value_type": item["type"],
+            "units": item["units"],
+            "master_itemid": master_item_id,
+            "preprocessing": [
+                {
+                    "type": 12,  # Tipo 12 = JSONPath
+                    "params": item["jsonpath"],
+                    "error_handler": 0,
+                    "error_handler_params": ""
+                }
+            ],
+            "delay": "0" # Herda do master
+        }
+
+        # Tenta criar. Se já existir (erro), tenta atualizar
+        try:
+            zabbix_api_call("item.create", payload_item, auth)
+            print("      Criado com sucesso!")
+        except Exception as e:
+            if "already exists" in str(e) or "SQ" in str(e):
+                print("      Item já existe. Atualizando...")
+                # Busca o ID do item existente e atualiza
+                existing = zabbix_api_call("item.get", {"hostids": host_id, "filter": {"key_": item["key"]}}, auth)
+                if existing:
+                    payload_item["itemid"] = existing[0]["itemid"]
+                    zabbix_api_call("item.update", payload_item, auth)
+                    print("      Atualizado!")
+            else:
+                print(f"      ERRO: {e}")
+
+    print("\n5. Finalizando...")
+    zabbix_api_call("user.logout", {}, auth)
+    print("Tudo pronto! Verifique a interface em Monitoring -> Latest data.")
+
+if __name__ == "__main__":
+    main()
+Passo 4 — Rodar o script
+bash
+python configurar_zabbix.py
+O que vai acontecer: O script vai cuspir logs no terminal falando que logou, achou o host, achou o item mestre, e vai criar os 7 itens em sequência. Se você der F5 no Zabbix, eles já vão estar lá!
+
+Por que isso é ouro para o seu README?
+Isso entra direto na sua documentação como um "Diferencial do Projeto":
+
+"A configuração do Zabbix foi feita via Infrastructure as Code (IaC). Em vez de clicar 15 vezes, o arquivo configurar_zabbix.py lê as credenciais do .env e cria toda a árvore de monitoramento via API, de forma idempotente (pode rodar várias vezes sem duplicar os itens)."
+
+Me diga:
+
+Conseguiu rodar o script (Passo 4) sem erro?
+
+Os 7 itens apareceram no Zabbix? (Pode tirar um print da tela de Latest data se funcionar!)
+
+Se funcionar, já pulamos direto para a Fatia 3 (Gatilhos e Telegram).
+
+🚀 BOOM! 7 itens criados em 2 segundos!
+Olha o poder da automação:
+
+text
+-> Criando 'Umidade'... Criado com sucesso!
+-> Criando 'Porta Aberta'... Criado com sucesso!
+-> Criando 'Modo'... Criado com sucesso!
+...
+Se você tivesse feito isso na interface, teria levado uns 15 minutos e talvez errado um JSONPath. Com o script, foi instantâneo e sem erro. Isso é a verdadeira "Infraestrutura como Código".
+
+O que fazer agora
+Vá no Zabbix Web: Monitoring → Latest data.
+
+Filtre por Rack CPD e clique em Apply.
+
+Você deve ver 9 itens na lista (o MQTT Status + os 8 dependentes).
+
+O que confirmar:
+
+Umidade: deve mostrar 40 %
+
+Porta Aberta: deve mostrar false
+
+Modo: deve mostrar ARMADO
+
+Estado: deve mostrar NORMAL
+
+Distância: deve mostrar 335.9 cm
+
+Invasões: deve mostrar 0
+
+Ambiente: deve mostrar OK
+
+Se todos estiverem com ícone verde e mostrando os valores acima, a Fatia 2 está 100% concluída.
+
+Próximo Passo: Fatia 3 — Gatilhos e Telegram
+Agora que o Zabbix tem todas as métricas, vamos fazer ele reagir a elas. Vamos criar:
+
+Gatilho de Temperatura: Se a temperatura passar de 30°C por 2 minutos, dispara alerta.
+
+Gatilho de Porta: Se a porta abrir, dispara alerta imediato.
+
+Gatilho de Invasão: Se o contador de invasões aumentar, dispara alerta crítico.
+
+Ação de Telegram: Enviar mensagem no seu celular.
+
+Antes de começarmos, preciso saber:
+
+1. Você já tem o Telegram instalado no celular?
+
+Se sim, precisamos criar um "Bot" no Telegram (é grátis e leva 2 minutos).
+
+Se não, pode baixar na App Store/Play Store agora.
+
+2. Você confirmou que os 9 itens estão verdes no Latest data? (Se algum estiver vermelho, me avisa antes de prosseguirmos).
+
+Assim que confirmar, eu te passo o passo a passo para criar o Bot no Telegram e configurar a integração no Zabbix. 🚀
+
+🎉 FATIA 2 CONCLUÍDA COM SUCESSO ABSOLUTO!
+Olha que obra de arte essa tela de Latest data:
+
+Item	Último valor (12s atrás)
+MQTT Status	{"estado":"NORMAL"... (o JSON bruto)
+Temperatura	24 °C
+Umidade	40 %
+Porta Aberta	false
+Modo	ARMADO
+Estado	NORMAL
+Distância	335.9 cm
+Invasões	0
+Ambiente	OK
+9 itens, todos verdes, todos atualizando a cada 12 segundos. Você transformou um monte de texto JSON num banco de dados relacional de métricas. O Zabbix está oficialmente no controle.
+
+🎯 Vamos para a Fatia 3: Gatilhos e Telegram
+Agora que temos os dados estruturados, vamos fazer o Zabbix pensar. Ele vai olhar para esses valores e, se algo sair do normal, vai nos avisar.
+
+Passo 3.1 — Criar o Bot no Telegram (2 minutos)
+Para o Zabbix enviar mensagens, precisamos de um "bot" no Telegram.
+
+No seu celular (ou no Telegram Web), procure o contato @BotFather.
+
+Envie a mensagem: /newbot
+
+Ele vai pedir um nome para o bot (ex: Monitor CPD).
+
+Ele vai pedir um username (precisa terminar com "bot", ex: monitor_cpd_cristiano_bot).
+
+Ele vai te dar um Token de Acesso (parece uma string longa tipo 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ).
+Anote esse token!
+
+Passo 3.2 — Descobrir o seu Chat ID
+O bot precisa saber para quem enviar a mensagem (no caso, você).
+
+Mande uma mensagem qualquer (ex: "Oi") para o seu novo bot no Telegram (procure pelo username que você criou).
+
+Abra o navegador e acesse este link (trocando <SEU_TOKEN> pelo token que o BotFather te deu):
+https://api.telegram.org/bot<SEU_TOKEN>/getUpdates
+
+Procure no texto que aparecer a parte "chat":{"id":123456789,...}. Esse número 123456789 é o seu Chat ID.
+Anote esse número!
+
+Passo 3.3 — Colocar no .env
+Abra o arquivo .env:
+
+bash
+open -e .env
+Adicione no final:
+
+env
+TELEGRAM_BOT_TOKEN=seu_token_aqui
+TELEGRAM_CHAT_ID=seu_chat_id_aqui
+O que vamos fazer depois que você confirmar o Telegram
+Com o bot criado, eu vou te passar um novo script Python (igual ao que criou os itens) que vai criar os Gatilhos (Triggers) e a Ação de envio via API. Você não vai precisar clicar em nada na interface do Zabbix.
+
+Me diga:
+
+Confirmou que os 9 itens estão verdes na tela?
+
+Conseguiu criar o Bot no Telegram e anotar o Token e o Chat ID?

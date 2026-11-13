@@ -1,0 +1,28 @@
+# monitoramento-cpd/mosquitto/config/bridge.conf.example
+# Modelo de ponte: puxa os tópicos do ESP32 do broker público para o local.
+#
+# Para ativar:
+#   1. cp bridge.conf.example bridge.conf
+#   2. descomentar "include /mosquitto/config/bridge.conf" no mosquitto.conf
+#   3. docker compose restart mosquitto
+
+connection ponte-emqx
+address broker.emqx.io:1883
+remote_username
+remote_password
+clientid cpd-bridge-emqx
+
+topic rack_monitor_ABCD1234/status      in 1
+topic rack_monitor_ABCD1234/ambiente    in 1
+topic rack_monitor_ABCD1234/logs        in 1
+topic rack_monitor_ABCD1234/heartbeat   in 1
+topic rack_monitor_ABCD1234/resposta    in 1
+topic rack_monitor_ABCD1234/status/lwt  in 1
+
+local_prefix publico/
+
+try_private true
+notifications false
+cleansession true
+start_type automatic
+restart_timeout 10

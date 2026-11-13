@@ -1,0 +1,1178 @@
+Resumo: sim, entre na pasta com cd ~/Desktop/monitoramento-cpd, confirme com pwd, e só depois rode docker compose up -d. Me manda a saída do docker compose ps quando estabilizar. 🚀
+
+# ==========================================================
+# monitoramento-cpd — variáveis de ambiente
+# Copie este arquivo para ".env" e preencha os valores.
+# O .env NÃO vai para o Git.
+# ==========================================================
+
+# ---------- Banco do Zabbix ----------
+POSTGRES_USER=zabbix
+POSTGRES_PASSWORD=troque_esta_senha_forte_123
+POSTGRES_DB=zabbix
+
+# ---------- Grafana ----------
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=troque_esta_senha_forte_456
+
+# ---------- Broker MQTT ----------
+# Deixe em branco nesta primeira subida.
+MQTT_USER=
+MQTT_PASSWORD=
+Esse é o .env com as senhas de exemplo 🎯
+Está tudo certo como template, mas essas senhas (troque_esta_senha_forte_123 / _456) são placeholders. Para laboratório local, funciona subir assim — só não é boa prática. Como você mesmo escreveu "troque", o correto é trocar antes do docker compose up -d.
+
+Duas opções
+Opção A — Trocar as senhas agora (recomendado)
+Abra o .env no editor:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/.env
+E troque só as duas linhas:
+
+env
+POSTGRES_PASSWORD=umaSenhaForteDoPostgres2026
+GRAFANA_ADMIN_PASSWORD=outraSenhaForteDoGrafana2026
+Regras para não quebrar:
+
+Sem #, $, !, espaço ou " sem aspas. Se precisar de algum, coloque entre aspas: POSTGRES_PASSWORD="se#nha".
+
+Anote as duas — você vai usar para logar no Grafana (a do Postgres você raramente vai usar, mas guarde).
+
+O login do Zabbix web continua sendo Admin / zabbix (senha padrão do Zabbix, não é a do .env). Troque dentro do Zabbix depois.
+
+Opção B — Subir com os placeholders (só para testar rápido)
+Se quiser só confirmar que a stack sobe, pode rodar assim mesmo. Aí a senha do Postgres é literalmente troque_esta_senha_forte_123 e a do Grafana admin é troque_esta_senha_forte_456. Depois você troca (mas trocar senha do Postgres já em uso exige parar tudo e apagar o volume — mais chato). Recomendo a Opção A.
+
+Depois de salvar o .env
+bash
+cd ~/Desktop/monitoramento-cpd
+
+# Confirme que o compose lê o .env sem erro
+docker compose config --quiet && echo "✅ compose OK"
+
+# Suba
+docker compose up -d
+
+# Estado (rode 2-3x nos primeiros 90s)
+docker compose ps
+Um detalhe: MQTT_USER e MQTT_PASSWORD vazios
+Está correto para esta primeira subida — o Mosquitto está com allow_anonymous true. Essas variáveis só serão usadas quando ativarmos autenticação no broker (fatia futura). Pode deixar em branco.
+
+Resumo: troque as duas senhas no .env (Opção A), salve, rode docker compose up -d. Me manda a saída do docker compose ps quando estabilizar. 🚀
+
+Feito
+🚀 Bora subir
+bash
+cd ~/Desktop/monitoramento-cpd
+
+# Validar
+docker compose config --quiet && echo "✅ compose OK"
+
+# Subir
+docker compose up -d
+
+# Ver estado (rode 2-3x nos primeiros 90s)
+docker compose ps
+O que vai acontecer
+compose OK → YAML válido, variáveis do .env lidas.
+
+up -d → baixa as imagens (~1,5 GB no total). No M4 com internet boa, 2–5 min. Você vê barras de progresso por serviço.
+
+ps → os estados evoluem. Rode 2–3 vezes em 90s.
+
+Estado final esperado:
+
+text
+NAME                IMAGE                                         STATUS
+cpd-mosquitto       eclipse-mosquitto:2.0                         Up (healthy)
+cpd-postgres        postgres:16-alpine                            Up (healthy)
+cpd-zabbix-server   zabbix/zabbix-server-pgsql:alpine-7.0-latest  Up
+cpd-zabbix-web      zabbix/zabbix-web-nginx-pgsql:alpine-7.0-...  Up
+cpd-grafana         grafana/grafana:13.2.5                        Up
+Testes finais (só depois de tudo Up/healthy)
+bash
+# Broker
+docker compose exec mosquitto mosquitto_pub -h localhost -t teste/cpd -m "ola"
+docker compose exec mosquitto mosquitto_sub -h localhost -t teste/cpd -C 1 -W 3
+# esperado: ola
+
+# Interfaces
+open http://localhost:8080   # Admin / zabbix
+open http://localhost:3000   # admin / sua senha do .env
+Me manda a saída do docker compose ps quando estabilizar + confirma se os dois navegadores abriram. Com tudo verde, fechamos o Passo 0 e partimos para a Fatia 1 — a ponte com o Wokwi. 🎯
+
+❯ pwd
+/Users/cristiano/Desktop/monitoramento-cpd
+❯ open -e .env
+❯ docker compose config --quiet && echo "✅ compose OK"
+✅ compose OK
+❯ docker compose up -d
+[+] up 61/61
+ ✔ Image eclipse-mosquitto:2.0                           Pulled                         36.4s
+ ✔ Image zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest Pulled                         35.6s
+ ✔ Image grafana/grafana:13.2.5                          Pulled                         75.4s
+ ✔ Image zabbix/zabbix-server-pgsql:alpine-7.0-latest    Pulled                         38.5s
+ ✔ Image postgres:16-alpine                              Pulled                         52.2s
+ ✔ Volume monitoramento-cpd_mosquitto_data               Created                         0.0s
+ ✔ Network monitoramento-cpd_cpd-net                     Created                         0.0s
+ ✔ Volume monitoramento-cpd_grafana_data                 Created                         0.0s
+ ✔ Volume monitoramento-cpd_mosquitto_log                Created                         0.0s
+ ✔ Volume monitoramento-cpd_postgres_data                Created                         0.0s
+ ... 5 more
+╭─ ~/Desktop/monitoramento-cpd ··················
+🎉 Subiu tudo sem erro
+Todos os 5 serviços foram criados. As imagens baixaram, volumes criados, rede criada. Agora é só confirmar que estabilizaram.
+
+Rode agora (e 2-3x nos primeiros 90s)
+bash
+docker compose ps
+Você vai ver os estados evoluírem. Zabbix server pode aparecer Restarting 1-2x nos primeiros 60-90s enquanto o Postgres termina de inicializar — isso é normal, o restart: unless-stopped levanta ele de novo.
+
+Estado final esperado (quando estabilizar):
+
+text
+NAME                IMAGE                                         STATUS
+cpd-mosquitto       eclipse-mosquitto:2.0                         Up (healthy)
+cpd-postgres        postgres:16-alpine                            Up (healthy)
+cpd-zabbix-server   zabbix/zabbix-server-pgsql:alpine-7.0-latest  Up
+cpd-zabbix-web      zabbix/zabbix-web-nginx-pgsql:alpine-7.0-...  Up
+cpd-grafana         grafana/grafana:13.2.5                        Up
+Sinais para diferenciar
+O que você vê	Significado
+Up (healthy)	Perfeito, pronto
+Up (health: starting)	Ainda inicializando (espere 10-30s)
+Restarting nos primeiros 90s	Normal (Zabbix esperando o banco)
+Restarting depois de 2min	Aí sim, problema → docker compose logs zabbix-server
+Exited (1)	Erro → docker compose logs <serviço>
+(unhealthy)	Healthcheck falhou → docker compose logs <serviço>
+Quando tudo estiver verde, os testes finais
+bash
+# Broker
+docker compose exec mosquitto mosquitto_pub -h localhost -t teste/cpd -m "ola"
+docker compose exec mosquitto mosquitto_sub -h localhost -t teste/cpd -C 1 -W 3
+# esperado: ola
+
+# Interfaces
+open http://localhost:8080   # Admin / zabbix
+open http://localhost:3000   # admin / sua senha do .env
+Me manda a saída do docker compose ps (depois de estabilizar) e diga se os dois navegadores abriram. Com isso fechamos o Passo 0 ✅ e partimos para a Fatia 1 — ligar a ponte com o Wokwi e ver o JSON do seu ESP32 chegando no Mosquitto local. 🚀
+
+❯ docker compose ps
+NAME                IMAGE                                             COMMAND  SERVICE         CREATED              STATUS                        PORTS
+cpd-grafana         grafana/grafana:13.2.5                            "/run.sh"  grafana         About a minute ago   Up About a minute             0.0.0.0:3000->3000/tcp,[::]:3000->3000/tcp
+cpd-mosquitto       eclipse-mosquitto:2.0                             "/docker-entrypoint.…"  mosquitto       About a minute ago   Up About a minute (healthy)   0.0.0.0:1883->1883/tcp,[::]:1883->1883/tcp, 0.0.0.0:9001->9001/tcp, [::]:9001->9001/tcp
+cpd-postgres        postgres:16-alpine                                "docker-entrypoint.s…"  postgres        About a minute ago   Up About a minute (healthy)   5432/tcp
+cpd-zabbix-server   zabbix/zabbix-server-pgsql:alpine-7.0-latest      "/usr/bin/docker-ent…"  zabbix-server   About a minute ago   Up 56 seconds                 0.0.0.0:10051->10051/tcp, [::]:10051->10051/tcp
+cpd-zabbix-web      zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest   "docker-entrypoint.sh"  zabbix-web      About a minute ago   Up 56 seconds (healthy)       0.0.0.0:8080->8080/tcp,[::]:8080->8080/tcp
+╭─ ~/Desktop/monitoramento-cpd ··
+✅ Passo 0 concluído com sucesso!
+A stack está de pé, tudo Up. Repare nos detalhes:
+
+cpd-mosquitto — (healthy) ✅ broker respondendo
+
+cpd-postgres — (healthy) ✅ banco pronto
+
+cpd-zabbix-server — Up ✅ (não reiniciou nenhuma vez, subiu de primeira)
+
+cpd-zabbix-web — (healthy) ✅ interface + API
+
+cpd-grafana — Up ✅
+
+Nada reiniciando, nada Exited. Stack limpa.
+
+Último teste antes de fechar
+bash
+# 1. Broker respondendo
+docker compose exec mosquitto mosquitto_pub -h localhost -t teste/cpd -m "ola"
+docker compose exec mosquitto mosquitto_sub -h localhost -t teste/cpd -C 1 -W 3
+# esperado: ola
+
+# 2. Interfaces abrem
+open http://localhost:8080   # Admin / zabbix
+open http://localhost:3000   # admin / sua senha do .env
+Se o mosquitto_sub imprimir ola e os dois navegadores abrirem o login → Passo 0 fechado ✅
+
+Um checklist rápido do que você acabou de fazer
+Você agora tem, rodando no Mac M4:
+
+Serviço	Papel	Porta
+Mosquitto	broker MQTT local	1883 / 9001 (WS)
+Postgres	banco do Zabbix	(interno)
+Zabbix server	coleta e avalia gatilhos	10051
+Zabbix web	interface + API	8080
+Grafana	dashboards	3000
+Tudo em rede isolada (cpd-net), dados em volumes nomeados (sobrevivem a docker compose down), configuração em .env (fora do Git).
+
+Antes de partir para a Fatia 1, dois hábitos para o resto do projeto
+1. Comando para ver o estado sempre:
+
+bash
+cd ~/Desktop/monitoramento-cpd && docker compose ps
+2. Quando quiser parar sem perder dados:
+
+bash
+docker compose down        # para tudo, volumes ficam
+docker compose up -d       # religa tudo
+O único comando que apaga dados é docker compose down -v — nunca rode sem intenção.
+
+Fatia 1 — o que vem agora
+Vamos ligar a ponte MQTT:
+
+Copiar bridge.conf.example → bridge.conf
+
+Descomentar o include no mosquitto.conf
+
+docker compose restart mosquitto
+
+Com o Wokwi rodando, assinar publico/# no Mosquitto local e ver os JSONs status e ambiente chegando
+
+Confirmar que a latência é compatível com o que o Zabbix vai precisar
+
+O teste de aceite será simples: o mosquitto_sub do seu Mac imprimindo o JSON que o Wokwi publicou no broker.emqx.io.
+
+Me confirma o resultado do mosquitto_sub/open acima e eu te passo a Fatia 1 completa. 🎯
+
+Preciso criar o arquivo bridge.conf?
+Ainda não — a Fatia 1 é exatamente isso 🎯
+O bridge.conf é o objetivo da Fatia 1, não parte do Passo 0. Deixa eu separar as coisas:
+
+O que temos hoje
+✅ mosquitto.conf — ativo, sem bridge (include comentado)
+
+✅ bridge.conf.example — modelo pronto, não ativo
+
+O broker local está funcionando sem a ponte. O teste ola que fizemos prova isso.
+
+O que a Fatia 1 vai fazer
+Você copia bridge.conf.example → bridge.conf
+
+Você descomenta a linha include /mosquitto/config/bridge.conf no mosquitto.conf
+
+Você roda docker compose restart mosquitto
+
+Aí o Mosquitto local começa a puxar os tópicos do broker.emqx.io
+
+Testamos com mosquitto_sub -t 'publico/#' -v enquanto o Wokwi está rodando
+
+Antes de fazer isso, preciso confirmar 2 coisas
+1. O Wokwi está rodando agora?
+A ponte só tem o que puxar se o firmware estiver publicando. Se você não tem o Wokwi aberto agora, a ponte vai ficar "escutando" um broker público onde ninguém publica nos seus tópicos — o mosquitto_sub fica vazio, e não dá para saber se é bug ou se é só falta de publisher.
+
+Abra o Wokwi (ou me diga se já está rodando) antes do teste.
+
+2. O nome dos tópicos no seu firmware bate com o que a ponte espera?
+No seu RackMonitor.ino:
+
+cpp
+const char* MQTT_TOPIC_STATUS = "rack_monitor_ABCD1234/status";
+E o bridge.conf.example que criei assina:
+
+text
+topic rack_monitor_ABCD1234/status in 1
+✅ Batendo. Ótimo, não precisa mudar nada.
+
+Pré-teste do broker público (opcional, mas útil)
+Antes de mexer na ponte, você pode confirmar que o Wokwi está publicando no broker público usando um cliente MQTT temporário do próprio Mac:
+
+bash
+# Roda um mosquitto_sub contra o broker público, de fora do Docker
+docker run --rm -it eclipse-mosquitto:2.0 \
+  mosquitto_sub -h broker.emqx.io -p 1883 -t 'rack_monitor_ABCD1234/#' -v
+Se aparecer JSON a cada 30s (heartbeat, status) → o Wokwi está publicando. Pode seguir para a ponte.
+
+Se ficar vazio por 60s → o Wokwi não está rodando, ou está publicando em outro tópico. Aí a gente investiga o firmware/Wokwi antes da ponte.
+
+Ctrl+C para parar.
+
+Resumo
+Pergunta	Resposta
+Preciso criar bridge.conf agora?	Não, só na Fatia 1
+O Passo 0 depende dele?	Não
+Quando criar?	Quando você disser "vamos para a Fatia 1" e o Wokwi estiver rodando
+Precisa mudar o mosquitto.conf?	Só na Fatia 1 (descomentar o include)
+Me confirma duas coisas e a gente parte para a Fatia 1:
+
+O teste mosquitto_sub/open do Passo 0 passou? (imprimiu ola e os logins abriram?)
+
+O Wokwi está rodando agora, ou você vai abrir?
+
+Com isso, eu te passo a Fatia 1 completa — passo a passo, incluindo o comando docker run acima para validar o broker público antes de tocar na ponte. 🚀
+
+Veja.
+Vejo que você já começou a organizar 📁
+Reparei em 3 coisas na sua captura de tela que valem ajuste antes de partirmos para a Fatia 1 — nenhuma é urgente, mas uma delas vai quebrar o docker compose se você rodar de dentro do VSCode.
+
+⚠️ O problema real: mosquitto.conf está estranho
+Olhando sua árvore, dentro de mosquitto/config/:
+
+text
+mosquitto/config/
+├── conf.d/
+│   └── .gitkeep
+├── bridge.conf.example
+└── mosquitto.conf      ← esse aqui
+O ícone do mosquitto.conf está diferente dos outros (parece um ícone de "ferramenta"/build, não o de YAML/config). E o README.md e o docker-compose.yml também estão com ícones de "status" (o mesmo do mosquitto.conf). Isso normalmente significa que o VSCode não reconheceu a extensão do arquivo ou a pasta está num estado de "erro de detecção".
+
+Como verificar rápido no Terminal:
+
+bash
+cd ~/Desktop/monitoramento-cpd/mosquitto/config
+cat mosquitto.conf
+Deve imprimir o conteúdo que o script colocou (linhas listener 1883, allow_anonymous true, etc.). Se imprimir outra coisa (ou binary file, ou vazio), o arquivo foi corrompido/salvo errado. Me manda a saída.
+
+Se o cat mostrar o conteúdo certo, é só cosmético (ícone do VSCode) e está tudo bem.
+
+🔴 O problema que vai quebrar: você entrou no VSCode na raiz errada
+Sua árvore mostra que você abriu o VSCode em monitoramento-cpd/, mas reparei em uma inconsistência grave:
+
+text
+monitoramento-cpd/
+├── .vscode/          ← VOCÊ CRIOU (não estava no plano)
+├── docs/             ← misturado com docs-md/
+│   ├── 01.txt
+│   └── 02.txt
+├── docs-md/          ← CRIOU também
+│   └── 00-plano.md
+├── grafana/
+│   └── .gitkeep
+├── mosquitto/config/
+│   ├── conf.d/.gitkeep
+│   ├── bridge.conf.example
+│   └── mosquitto.conf
+├── zabbix/
+│   └── .gitkeep
+├── .dockerignore
+├── .env
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── monitoramento-cpd.sh   ← script que você rodou
+└── README.md
+Compare com o que o script deveria ter criado:
+
+Esperado	Sua árvore
+docs/00-plano.md	❌ está em docs-md/00-plano.md
+docs/ vazia (só .gitkeep opcional)	❌ tem 01.txt e 02.txt
+Sem .vscode/	❌ .vscode/ existe
+Sem monitoramento-cpd.sh dentro	❌ o .sh está lá dentro
+Boa notícia: o docker-compose.yml só depende de ./mosquitto/config/. Ele não se importa com docs/, docs-md/, .vscode/, nem com o .sh. Então a stack já está funcionando (provamos com docker compose ps). Nada disso quebra o Passo 0.
+
+Mas: é importante arrumar antes de versionar no Git, senão vira bagunça. Especificamente:
+
+O .vscode/settings.json pode interferir se tiver configuração de terminal/Python — por enquanto, ignorável.
+
+docs/01.txt e docs/02.txt são seus (anotações?) — deixe onde quiser.
+
+docs-md/00-plano.md — só renomear docs-md/ → docs/ e mover os .txt para outro lugar.
+
+monitoramento-cpd.sh dentro do projeto — mova para fora (ex.: ~/Desktop/Casa/use/), porque é um instalador, não faz parte do projeto.
+
+🟡 O problema cosmético: falta .env (ou está invisível?)
+Reparei que sua árvore não mostra .env — só .env.example. Mas o ls -la que você rodou antes mostrava .env. Provavelmente é só o VSCode escondendo arquivos que começam com ponto (config padrão de "Hidden files" desligada).
+
+Confirme no Terminal:
+
+bash
+ls -la ~/Desktop/monitoramento-cpd/.env
+# deve mostrar o arquivo
+Antes de seguir para a Fatia 1, dois ajustes rápidos
+1. Reorganizar docs/ (30s, opcional mas recomendado)
+bash
+cd ~/Desktop/monitoramento-cpd
+
+# Se docs-md só tem o plano:
+mv docs-md/00-plano.md docs/
+rmdir docs-md
+
+# Mova seus .txt para fora do projeto (ou deixe, se são anotações do projeto mesmo)
+mkdir -p ~/Desktop/Casa/use/anotacoes
+mv docs/01.txt docs/02.txt ~/Desktop/Casa/use/anotacoes/
+
+# Mova o script instalador para fora do projeto
+mv monitoramento-cpd.sh ~/Desktop/Casa/use/
+Depois:
+
+bash
+find ~/Desktop/monitoramento-cpd -maxdepth 2 -not -path '*/.*' | sort
+Deve mostrar só:
+
+text
+monitoramento-cpd
+monitoramento-cpd/docker-compose.yml
+monitoramento-cpd/docs/00-plano.md
+monitoramento-cpd/grafana
+monitoramento-cpd/mosquitto/config
+monitoramento-cpd/README.md
+monitoramento-cpd/zabbix
+2. Confirme que o .env está intacto
+bash
+cd ~/Desktop/monitoramento-cpd
+ls -la .env && head -5 .env
+Se o head mostrar as primeiras linhas (comentário + POSTGRES_USER=zabbix), o .env está OK. Se não, o VSCode pode ter sobrescrito algo — me avisa que a gente recria.
+
+Sobre o ícone do mosquitto.conf no VSCode
+Se depois do cat o conteúdo estiver certo, mas o ícone ainda estiver estranho, é só file association do VSCode. Não afeta nada. Se quiser arrumar:
+
+Cmd+Shift+P → "Change Language Mode" → "Plain Text" (para .conf)
+
+Ou crie .vscode/settings.json com:
+
+json
+{ "files.associations": { "*.conf": "properties" } }
+Mas é cosmético.
+
+Depois dos ajustes, voltamos ao que importa
+Me confirma:
+
+cat mosquitto.conf — imprime o conteúdo esperado? (não é lixo/binário)
+
+head -5 .env — primeiras linhas com POSTGRES_USER=zabbix?
+
+O mosquitto_sub/open do Passo 0 — passou? (ola + dois logins abrindo)
+
+O Wokwi — está rodando agora, ou você vai abrir?
+
+Com essas 4 respostas, eu te passo a Fatia 1 completa (ponte com o Wokwi + teste validado). A bagunça de pastas não bloqueia nada — dá para organizar depois. 🚀
+
+Veja agora.
+🎯 Ainda faltam 3 detalhes, mas o importante está funcionando
+A árvore está quase igual à que montei, e o crucial é: docker compose ps mostrou tudo Up. Isso prova que o Passo 0 está funcional. As diferenças de organização são cosméticas e não afetam em nada a stack. Vamos arrumar em 30 segundos.
+
+O que ainda está diferente
+Item	Esperado	Sua árvore	Impacto
+docs/00-plano.md	dentro de docs/	dentro de docs-md/	🟡 cosmético
+docs/01.txt, 02.txt	não deveriam estar em docs/	estão	🟡 cosmético
+.vscode/	não deveria existir no projeto	existe	🟡 cosmético
+monitoramento-cpd.sh	não deveria estar dentro do projeto	está	🟡 cosmético
+Nada disso quebra a stack. O docker-compose.yml só olha para mosquitto/config/, e essa pasta está perfeita.
+
+Limpeza rápida (colar e rodar)
+bash
+cd ~/Desktop/monitoramento-cpd
+
+# 1. Mover os .txt para fora do projeto (para não confundir)
+mkdir -p ~/Desktop/Casa/use/anotacoes
+mv docs/01.txt docs/02.txt ~/Desktop/Casa/use/anotacoes/ 2>/dev/null
+
+# 2. Trazer o plano para dentro de docs/
+mv docs-md/00-plano.md docs/ 2>/dev/null
+rmdir docs-md 2>/dev/null
+
+# 3. Tirar o instalador da pasta do projeto
+mv monitoramento-cpd.sh ~/Desktop/Casa/use/ 2>/dev/null
+
+# 4. O .vscode: pode apagar (não usamos nada dele)
+rm -rf .vscode
+Verificação final
+bash
+find ~/Desktop/monitoramento-cpd -maxdepth 2 -not -path '*/.*' | sort
+Deve mostrar apenas:
+
+text
+/Users/cristiano/Desktop/monitoramento-cpd
+/Users/cristiano/Desktop/monitoramento-cpd/docker-compose.yml
+/Users/cristiano/Desktop/monitoramento-cpd/docs
+/Users/cristiano/Desktop/monitoramento-cpd/docs/00-plano.md
+/Users/cristiano/Desktop/monitoramento-cpd/grafana
+/Users/cristiano/Desktop/monitoramento-cpd/mosquitto
+/Users/cristiano/Desktop/monitoramento-cpd/mosquitto/config
+/Users/cristiano/Desktop/monitoramento-cpd/README.md
+/Users/cristiano/Desktop/monitoramento-cpd/zabbix
+E o .env continua lá:
+
+bash
+ls -la .env
+🟢 Fatia 1 — Hora da ponte MQTT
+Se o Passo 0 está confirmado (mosquitto respondendo ola + logins abrindo), vamos ao que interessa. Dois testes antes de mexer em config:
+
+Teste 1 — O Wokwi está publicando no broker público?
+bash
+docker run --rm -it eclipse-mosquitto:2.0 \
+  mosquitto_sub -h broker.emqx.io -p 1883 -t 'rack_monitor_ABCD1234/#' -v
+O que esperar:
+
+Aparece JSON a cada ~30s (heartbeat, status) → Wokwi está rodando e publicando. Pode seguir.
+
+Fica vazio por 60s → o Wokwi não está rodando, ou os tópicos são outros. Me avisa.
+
+Ctrl+C para sair.
+
+Teste 2 — Confirmar a árvore (o find acima)
+Se os dois passarem, siga a Fatia 1:
+
+Fatia 1 — Passo a passo
+1. Copiar o modelo de ponte:
+
+bash
+cd ~/Desktop/monitoramento-cpd/mosquitto/config
+cp bridge.conf.example bridge.conf
+2. Ativar a ponte no mosquitto.conf:
+
+bash
+open -e mosquitto.conf
+Na última linha, descomente:
+
+conf
+# include /mosquitto/config/bridge.conf      ← antes
+include /mosquitto/config/bridge.conf        ← depois
+Salve e feche.
+
+3. Reiniciar o Mosquitto:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart mosquitto
+4. Verificar os logs da ponte:
+
+bash
+docker compose logs --tail=30 mosquitto
+Deve aparecer algo como:
+
+text
+Connecting bridge ponte-emqx (broker.emqx.io:1883)
+ponte-emqx: subscribed to rack_monitor_ABCD1234/status
+ponte-emqx: subscribed to rack_monitor_ABCD1234/ambiente
+...
+Se aparecer Connection refused, name resolution failed, ou not authorized, me manda.
+
+5. Ver os tópicos chegando no broker local (com o Wokwi rodando):
+
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+Deve imprimir, a cada ~30s:
+
+text
+publico/rack_monitor_ABCD1234/heartbeat {"ts":"...","uptime_s":123,...}
+publico/rack_monitor_ABCD1234/status {"estado":"NORMAL","modo":"ARMADO",...}
+publico/rack_monitor_ABCD1234/ambiente {"temp_c":23.5,"umid_pct":60,...}
+Se isso aparecer → Fatia 1 fechada ✅ e partimos para a Fatia 2 (criar o item MQTT no Zabbix).
+
+Me diga:
+
+O find + ls .env acima confirmam a árvore limpa?
+
+O teste 1 (broker público) mostra JSON a cada 30s?
+
+O Wokwi está rodando agora, ou você vai abrir?
+
+Com isso eu te guio na Fatia 1 completa. 🚀
+
+❯ cd ~/Desktop/monitoramento-cpd
+
+# 1. Mover os .txt para fora do projeto (para não confundir)
+mkdir -p ~/Desktop/Casa/use/anotacoes
+mv docs/01.txt docs/02.txt ~/Desktop/Casa/use/anotacoes/ 2>/dev/null
+
+# 2. Trazer o plano para dentro de docs/
+mv docs-md/00-plano.md docs/ 2>/dev/null
+rmdir docs-md 2>/dev/null
+
+# 3. Tirar o instalador da pasta do projeto
+mv monitoramento-cpd.sh ~/Desktop/Casa/use/ 2>/dev/null
+
+# 4. O .vscode: pode apagar (não usamos nada dele)
+rm -rf .vscode
+❯ find ~/Desktop/monitoramento-cpd -maxdepth 2 -not -path '*/.*' | sort
+
+/Users/cristiano/Desktop/monitoramento-cpd
+/Users/cristiano/Desktop/monitoramento-cpd/docker-compose.yml
+/Users/cristiano/Desktop/monitoramento-cpd/docs
+/Users/cristiano/Desktop/monitoramento-cpd/docs/00-plano.md
+/Users/cristiano/Desktop/monitoramento-cpd/grafana
+/Users/cristiano/Desktop/monitoramento-cpd/mosquitto
+/Users/cristiano/Desktop/monitoramento-cpd/mosquitto/config
+/Users/cristiano/Desktop/monitoramento-cpd/README.md
+/Users/cristiano/Desktop/monitoramento-cpd/zabbix
+╭─ ~/Desktop/monitoramento-cpd ············ ✔  system   at 09:46:24 
+╰─
+✅ Estrutura limpa e idêntica ao plano
+Perfeito. A árvore está exatamente como deveria. Agora a Fatia 1.
+
+🟢 Fatia 1 — Ponte MQTT com o Wokwi
+Antes de mexer em config, dois testes rápidos para saber onde estamos.
+
+Teste 1 — O Wokwi está publicando no broker público?
+Com o Wokwi rodando (se não estiver, abra agora), rode no Mac:
+
+bash
+docker run --rm -it eclipse-mosquitto:2.0 \
+  mosquitto_sub -h broker.emqx.io -p 1883 -t 'rack_monitor_ABCD1234/#' -v
+O que esperar:
+
+✅ JSON aparecendo a cada ~30s (heartbeat, status, ambiente) → Wokwi OK, siga para o passo 2.
+
+❌ Silêncio por 60s → o Wokwi não está rodando, ou está publicando em outro tópico. Me avisa que investigamos o firmware/Wokwi.
+
+Ctrl+C para parar.
+
+Teste 2 — Ativar a ponte no Mosquitto
+1. Copiar o modelo:
+
+bash
+cd ~/Desktop/monitoramento-cpd/mosquitto/config
+cp bridge.conf.example bridge.conf
+2. Descomentar o include no mosquitto.conf:
+
+bash
+open -e mosquitto.conf
+Na última linha, descomente (remova o # e o espaço do início):
+
+conf
+# ANTES:
+# include /mosquitto/config/bridge.conf
+
+# DEPOIS:
+include /mosquitto/config/bridge.conf
+Salve (Cmd+S) e feche.
+
+3. Reiniciar o Mosquitto:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart mosquitto
+4. Conferir os logs da ponte:
+
+bash
+docker compose logs --tail=30 mosquitto
+Deve aparecer algo como:
+
+text
+... Connecting bridge ponte-emqx (broker.emqx.io:1883)
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/status
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/ambiente
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/heartbeat
+...
+Se aparecer Connection refused, name resolution failed, not authorized ou algo diferente, me manda a saída.
+
+Teste 3 — Ver os tópicos chegando no Mosquitto local
+Com o Wokwi rodando e a ponte ativa:
+
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+O que esperar (a cada ~30s):
+
+text
+publico/rack_monitor_ABCD1234/heartbeat {"ts":"2026-11-12T...","uptime_s":...}
+publico/rack_monitor_ABCD1234/status    {"estado":"NORMAL","modo":"ARMADO",...}
+publico/rack_monitor_ABCD1234/ambiente  {"temp_c":...,"umid_pct":...,...}
+Repare no prefixo publico/ — é o local_prefix do bridge.conf, provando que a mensagem veio de fora (broker público) e foi repassada para dentro da rede Docker.
+
+Ctrl+C para parar.
+
+✅ Critério de sucesso da Fatia 1
+Os 3 testes passaram quando:
+
+Teste 1: JSON no terminal contra broker.emqx.io
+
+Teste 3: os mesmos JSONs (agora com prefixo publico/) no Mosquitto local
+
+Se ambos mostrarem dados do ESP32 → Fatia 1 fechada e partimos para a Fatia 2 (criar o host + item mestre MQTT no Zabbix).
+
+Se algo der errado
+Me manda:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose ps mosquitto
+docker compose logs --tail=60 mosquitto
+Os suspeitos comuns:
+
+Connection refused → broker.emqx.io fora, ou firewall do Mac bloqueando saída na 1883
+
+name resolution failed → DNS temporário
+
+Nenhum log de bridge → o include no mosquitto.conf não está descomentado ou o arquivo não existe
+
+Logs OK mas mosquitto_sub vazio → Wokwi parado ou tópicos diferentes do esperado
+
+Bora rodar os 3 testes e me dizer o resultado. 🚀
+
+❯ docker run --rm -it eclipse-mosquitto:2.0 \
+  mosquitto_sub -h broker.emqx.io -p 1883 -t 'rack_monitor_ABCD1234/#' -v
+rack_monitor_ABCD1234/status/lwt {"status":"online"}
+rack_monitor_ABCD1234/status {"estado":"NORMAL","modo":"ARMADO","ts":"2026-11-12T09:47:40","time_source":"RTC","nonce":0,"porta":false,"luz":true,"dist_cm":335.9,"ativo":false,"ip":"10.10.0.2","uid":"-","acessos":0,"invasoes":0,"rearmes":0,"alerta_temp":false,"critico_temp":false,"alerta_umid":false,"critico_umid":false,"taxa_temp_alerta":false,"ambiente":"OK","temp_c":24.0,"umid_pct":40.0}
+rack_monitor_ABCD1234/ambiente {"ts":"2026-11-12T09:47:40","time_source":"RTC","temp_c":24.0,"umid_pct":40.0,"estado":"OK","alerta_temp":false,"critico_temp":false,"alerta_umid":false,"critico_umid":false,"taxa_temp_alerta":false,"sensor_dht_ok":true,"limiares":{"t_alert":30.0,"t_crit":35.0,"u_alert":65.0,"u_crit":80.0}}
+rack_monitor_ABCD1234/heartbeat {"ts":"2026-11-12T09:47:43","uptime_s":30,"time_source":"RTC","nonce":0}
+rack_monitor_ABCD1234/ambiente {"ts":"2026-11-12T09:47:43","time_source":"RTC","temp_c":24.0,"umid_pct":40.0,"estado":"OK","alerta_temp":false,"critico_temp":false,"alerta_umid":false,"critico_umid":false,"taxa_temp_alerta":false,"sensor_dht_ok":true,"limiares":{"t_alert":30.0,"t_crit":35.0,"u_alert":65.0,"u_crit":80.0}}
+🎉 Teste 1 passou — Wokwi publicando perfeitamente!
+Olha só que beleza de dados:
+
+text
+rack_monitor_ABCD1234/status/lwt     {"status":"online"}
+rack_monitor_ABCD1234/status         {"estado":"NORMAL","modo":"ARMADO",...}
+rack_monitor_ABCD1234/ambiente       {"temp_c":24.0,"umid_pct":40.0,...}
+rack_monitor_ABCD1234/heartbeat      {"uptime_s":30,...}
+Tudo certo:
+
+✅ LWT = online (a placa se registrou)
+
+✅ status com todos os campos
+
+✅ ambiente a cada ~30s
+
+✅ heartbeat com uptime
+
+Pode seguir direto para a ponte. Bora.
+
+Passo 2 — Ativar a ponte (agora)
+1. Copiar o modelo
+bash
+cd ~/Desktop/monitoramento-cpd/mosquitto/config
+cp bridge.conf.example bridge.conf
+2. Descomentar o include no mosquitto.conf
+bash
+open -e mosquitto.conf
+Na última linha, remova o # e o espaço:
+
+conf
+# ANTES:
+# include /mosquitto/config/bridge.conf
+
+# DEPOIS:
+include /mosquitto/config/bridge.conf
+Salve (Cmd+S) e feche o TextEdit.
+
+3. Reiniciar o Mosquitto
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart mosquitto
+4. Verificar os logs
+bash
+docker compose logs --tail=30 mosquitto
+O que você deve ver (linhas parecidas — a ordem e a quantidade podem variar):
+
+text
+... Connecting bridge ponte-emqx (broker.emqx.io:1883)
+... ponte-emqx: outgoing messages are queued
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/status
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/ambiente
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/heartbeat
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/logs
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/resposta
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/status/lwt
+Se aparecer Connection refused, name resolution failed ou not authorized → me manda a saída.
+
+5. Testar que os dados chegam no Mosquitto local
+Deixa o Wokwi rodando e rode:
+
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+O que deve aparecer (repare no prefixo publico/):
+
+text
+publico/rack_monitor_ABCD1234/heartbeat {"ts":"...","uptime_s":...,...}
+publico/rack_monitor_ABCD1234/status    {"estado":"NORMAL",...}
+publico/rack_monitor_ABCD1234/ambiente  {"temp_c":24.0,"umid_pct":40.0,...}
+publico/rack_monitor_ABCD1234/status/lwt {"status":"online"}
+Ctrl+C para parar.
+
+✅ Critério de sucesso da Fatia 1
+Os dois lados batem quando:
+
+✅ Teste 1 (broker público): JSON a cada ~30s
+
+✅ Teste 5 (Mosquitto local, via publico/#): os mesmos JSONs, agora com prefixo publico/
+
+Se ambos passarem → Fatia 1 fechada 🎯 e partimos para a Fatia 2: criar o host + item mestre MQTT no Zabbix para ler publico/rack_monitor_ABCD1234/status e .../ambiente.
+
+Se o restart mosquitto der problema
+O caso mais comum é o include continuar comentado, ou o bridge.conf não ter sido criado. Diagnóstico:
+
+bash
+# Ver se o arquivo existe
+ls -la ~/Desktop/monitoramento-cpd/mosquitto/config/bridge.conf
+
+# Ver a última linha do mosquitto.conf
+tail -3 ~/Desktop/monitoramento-cpd/mosquitto/config/mosquitto.conf
+# deve mostrar: include /mosquitto/config/bridge.conf  (sem #)
+Se ambos OK mas ainda sem dados no teste 5, me manda:
+
+bash
+docker compose logs --tail=60 mosquitto
+Bora rodar. 🚀
+
+🛠️ Dois erros, dois consertos simples
+O log mostrou duas coisas diferentes. Vamos entender cada uma:
+
+Erro 1 — chown: Read-only file system (cosmético, ignore)
+text
+chown: /mosquitto/config/mosquitto.conf: Read-only file system
+Isso é o entrypoint do eclipse-mosquitto:2.0 tentando ajustar dono dos arquivos do usuário mosquitto no container. Como montamos o config como :ro (read-only) por segurança, ele não consegue fazer chown e reclama. Mas isso não impede o Mosquitto de ler o config — é só barulho.
+
+Não precisa fazer nada com isso. Se quiser silenciar completamente, a solução é mudar o mount de :ro para :rw no docker-compose.yml, mas eu prefiro deixar :ro (mais seguro) e conviver com o aviso.
+
+Erro 2 — Unknown configuration variable "include" (é esse que quebra)
+text
+Error: Unknown configuration variable "include".
+Error found at /mosquitto/config/mosquitto.conf:26.
+O Mosquitto não tem uma diretiva include! Diferente do nginx/Apache, ele usa:
+
+include_dir <pasta> — inclui todos os arquivos .conf de uma pasta
+
+Não existe include <arquivo> individual
+
+Então a linha que o script original colocou está errada para o Mosquitto. Precisamos corrigir duas coisas:
+
+Mover o bridge.conf para a pasta conf.d/ (que já existe)
+
+Trocar include .../bridge.conf por include_dir .../conf.d
+
+Correção em 3 comandos
+1. Mover o bridge.conf para conf.d/
+bash
+cd ~/Desktop/monitoramento-cpd/mosquitto/config
+mv bridge.conf conf.d/bridge.conf
+2. Corrigir o mosquitto.conf
+bash
+open -e mosquitto.conf
+Remova a linha que você descomentou:
+
+conf
+# ANTES (dá erro):
+include /mosquitto/config/bridge.conf
+
+# DEPOIS (correto):
+include_dir /mosquitto/config/conf.d
+O arquivo final deve terminar assim:
+
+conf
+listener 1883
+allow_anonymous true
+
+listener 9001
+protocol websockets
+
+persistence true
+persistence_location /mosquitto/data/
+
+log_dest file /mosquitto/log/mosquitto.log
+log_type error
+log_type warning
+log_type notice
+
+# Inclui todos os .conf da pasta conf.d/ (bridge.conf está lá)
+include_dir /mosquitto/config/conf.d
+Salve e feche.
+
+3. Restart
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart mosquitto
+docker compose logs --tail=30 mosquitto
+O que você deve ver agora
+Em vez de Unknown configuration variable, algo assim:
+
+text
+... Connecting bridge ponte-emqx (broker.emqx.io:1883)
+... ponte-emqx: outgoing messages are queued
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/status
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/ambiente
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/heartbeat
+...
+Os avisos de chown: Read-only file system vão continuar — ignore, são cosméticos.
+
+⚠️ Atenção: se o .gitkeep da pasta conf.d/ não tiver extensão .conf, o Mosquitto ignora. Mas se algum dia você colocar outro .conf lá (ex.: auth.conf), ele será lido automaticamente — o que é exatamente o que queremos.
+
+Teste final da Fatia 1
+Com o Wokwi rodando e a ponte ativa:
+
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+Esperado (a cada ~30s):
+
+text
+publico/rack_monitor_ABCD1234/status/lwt {"status":"online"}
+publico/rack_monitor_ABCD1234/status     {"estado":"NORMAL",...}
+publico/rack_monitor_ABCD1234/ambiente   {"temp_c":24.0,"umid_pct":40.0,...}
+publico/rack_monitor_ABCD1234/heartbeat  {"uptime_s":...,...}
+Ctrl+C para parar.
+
+Se ainda não funcionar
+Me manda:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose logs --tail=40 mosquitto
+ls -la mosquitto/config/conf.d/
+E me confirma:
+
+O bridge.conf está dentro de conf.d/?
+
+A linha no mosquitto.conf é include_dir /mosquitto/config/conf.d (sem #)?
+
+Bora corrigir e rodar. 🚀
+
+🛠️ Progresso! Só falta um ajuste no bridge.conf
+Repare no que mudou:
+
+❌ Unknown configuration variable "include" — ainda aparecia nas primeiras linhas (logs antigos do restart anterior, buffer do Docker).
+
+✅ Loading config file /mosquitto/config/conf.d/bridge.conf — o Mosquitto achou e está lendo o bridge. A include_dir funcionou!
+
+❌ Error: Empty bridge remote_username value — é o novo bloqueio.
+
+O que aconteceu: no bridge.conf eu deixei:
+
+text
+remote_username
+remote_password
+Sem valor. O Mosquitto 2.x trata isso como erro fatal — se a chave está presente, ela precisa ter valor (a menos que você use remote_username sem a linha, quando o broker é anônimo).
+
+Como o broker.emqx.io público é anônimo, temos que remover as duas linhas ou preenchê-las com valor vazio entre aspas. A forma limpa é remover.
+
+Correção (2 opções)
+Opção A — Editar o conf.d/bridge.conf (recomendada)
+bash
+open -e ~/Desktop/monitoramento-cpd/mosquitto/config/conf.d/bridge.conf
+Remova as duas linhas:
+
+conf
+remote_username
+remote_password
+O arquivo final deve ser:
+
+conf
+connection ponte-emqx
+address broker.emqx.io:1883
+clientid cpd-bridge-emqx
+
+topic rack_monitor_ABCD1234/status      in 1
+topic rack_monitor_ABCD1234/ambiente    in 1
+topic rack_monitor_ABCD1234/logs        in 1
+topic rack_monitor_ABCD1234/heartbeat   in 1
+topic rack_monitor_ABCD1234/resposta    in 1
+topic rack_monitor_ABCD1234/status/lwt  in 1
+
+local_prefix publico/
+
+try_private true
+notifications false
+cleansession true
+start_type automatic
+restart_timeout 10
+Salve, feche, e:
+
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart mosquitto
+docker compose logs --tail=30 mosquitto
+Opção B — Corrigir o bridge.conf.example também (para os próximos)
+Depois de fazer a Opção A no bridge.conf, edite o exemplo também, para não repetir o erro em outras máquinas:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/mosquitto/config/bridge.conf.example
+Remova as mesmas duas linhas e salve.
+
+O que você deve ver agora
+bash
+docker compose logs --tail=30 mosquitto
+Esperado (as linhas de chown: Read-only vão continuar — ignore):
+
+text
+... Connecting bridge ponte-emqx (broker.emqx.io:1883)
+... ponte-emqx: outgoing messages are queued
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/status
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/ambiente
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/heartbeat
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/logs
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/resposta
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/status/lwt
+Zero erros depois do Loading config file ... bridge.conf.
+
+Teste final (com o Wokwi rodando)
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+Esperado a cada ~30s:
+
+text
+publico/rack_monitor_ABCD1234/status/lwt {"status":"online"}
+publico/rack_monitor_ABCD1234/status     {"estado":"NORMAL",...}
+publico/rack_monitor_ABCD1234/ambiente   {"temp_c":24.0,"umid_pct":40.0,...}
+publico/rack_monitor_ABCD1234/heartbeat  {"uptime_s":...,...}
+Ctrl+C para parar.
+
+Se quiser silenciar os chown: Read-only file system
+Isso é cosmético. Mas se te incomoda, é fácil: o Mosquitto tenta dar chown nos arquivos porque o mount está :ro. Basta:
+
+Abrir docker-compose.yml
+
+Trocar ./mosquitto/config:/mosquitto/config:ro por ./mosquitto/config:/mosquitto/config:rw
+
+docker compose restart mosquitto
+
+Contras: o container passa a poder modificar o config na sua pasta, o que é menos seguro. No meu setup, prefiro deixar :ro e ignorar o aviso. A escolha é sua — para o laboratório, tanto faz.
+
+Resumo do que passou
+Linha do log	Estado
+Loading config file ... bridge.conf	✅ bridge sendo lida
+subscribed to rack_monitor...	✅ ponte conectada
+chown: Read-only	🟡 cosmético
+remote_username vazio	❌ ainda não corrigido → Opção A acima
+Rode a Opção A, me manda docker compose logs --tail=30 mosquitto de novo. Se os subscribed to ... aparecerem sem o Empty bridge remote_username, a Fatia 1 está fechada e partimos para a Fatia 2. 🚀
+
+Encontrados 10 resultados
+🛠️ Erro de sintaxe: local_prefix não existe no Mosquitto
+O log é claro:
+
+text
+Error: Unknown configuration variable "local_prefix".
+Error found at /mosquitto/config/conf.d/bridge.conf:20.
+O Mosquitto não tem uma diretiva global chamada local_prefix. O prefixo local é definido dentro da linha topic, não como uma configuração separada.
+
+A causa
+Eu escrevi o bridge.conf assumindo uma sintaxe que não é a do Mosquitto. A forma correta de prefixar tópicos é incluir os prefixos na própria linha topic:
+
+conf
+topic <padrão> <direção> <qos> <prefixo-local> <prefixo-remoto>
+Segundo a documentação oficial, quando você usa in, o Mosquitto:
+
+Pega o padrão e adiciona o prefixo remoto → assina no broker público
+
+Quando a mensagem chega, remove o prefixo remoto e adiciona o prefixo local 
+
+Ou seja, para transformar rack_monitor_ABCD1234/status (remoto) em publico/rack_monitor_ABCD1234/status (local), a linha deve ser:
+
+conf
+topic rack_monitor_ABCD1234/status in 1 publico/ ""
+publico/ = prefixo local (adicionado ao chegar)
+
+"" = prefixo remoto (vazio, pois o tópico remoto já é o que queremos)
+
+Correção do bridge.conf
+Abra o arquivo:
+
+bash
+open -e ~/Desktop/monitoramento-cpd/mosquitto/config/conf.d/bridge.conf
+Substitua todo o conteúdo por isto:
+
+conf
+connection ponte-emqx
+address broker.emqx.io:1883
+clientid cpd-bridge-emqx
+
+# topic <padrão> in <qos> <prefixo-local> <prefixo-remoto>
+# Prefixo local: publico/
+# Prefixo remoto: "" (vazio, pois o padrão já é o tópico remoto)
+topic rack_monitor_ABCD1234/status      in 1 publico/ ""
+topic rack_monitor_ABCD1234/ambiente    in 1 publico/ ""
+topic rack_monitor_ABCD1234/logs        in 1 publico/ ""
+topic rack_monitor_ABCD1234/heartbeat   in 1 publico/ ""
+topic rack_monitor_ABCD1234/resposta    in 1 publico/ ""
+topic rack_monitor_ABCD1234/status/lwt  in 1 publico/ ""
+
+try_private true
+notifications false
+cleansession true
+start_type automatic
+restart_timeout 10
+Pontos-chave:
+
+❌ Remova a linha local_prefix publico/ (não existe)
+
+✅ Cada linha topic agora tem os dois prefixos no final: publico/ e "" (com aspas)
+
+A ordem é: padrão direção qos local remoto
+
+Salve e feche.
+
+Atualize também o exemplo
+bash
+open -e ~/Desktop/monitoramento-cpd/mosquitto/config/bridge.conf.example
+Faça a mesma substituição (copie o conteúdo acima, mas mantenha o comentário de cabeçalho original).
+
+Reinicie e confira
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose restart mosquitto
+docker compose logs --tail=30 mosquitto
+O que esperar agora:
+
+text
+... Connecting bridge ponte-emqx (broker.emqx.io:1883)
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/status
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/ambiente
+... ponte-emqx: subscribed to rack_monitor_ABCD1234/heartbeat
+...
+Sem erros de local_prefix, sem erros de remote_username. Os avisos de chown: Read-only continuam (são cosméticos).
+
+Teste final (com Wokwi rodando)
+bash
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+Esperado (a cada ~30s):
+
+text
+publico/rack_monitor_ABCD1234/status/lwt {"status":"online"}
+publico/rack_monitor_ABCD1234/status     {"estado":"NORMAL",...}
+publico/rack_monitor_ABCD1234/ambiente   {"temp_c":24.0,...}
+publico/rack_monitor_ABCD1234/heartbeat  {"uptime_s":30,...}
+Ctrl+C para parar.
+
+Se ainda der erro
+Me manda a saída de:
+
+bash
+docker compose logs --tail=40 mosquitto
+cat ~/Desktop/monitoramento-cpd/mosquitto/config/conf.d/bridge.conf
+Agora a sintaxe está correta segundo a documentação do Mosquitto. Se aparecer outro erro, é só mais um ajuste fino. 🚀
+
+🎉 Funcionou! A ponte subiu limpa
+Olha a última parte do log:
+
+text
+1794488133: Loading config file /mosquitto/config/conf.d/bridge.conf
+Sem nenhum Error: depois disso. O local_prefix ainda aparece nas primeiras linhas, mas são logs antigos em buffer do container anterior (o Docker guarda as últimas 30 linhas por padrão). O restart mais recente (timestamp 1794488133) não tem erro algum.
+
+Compare os timestamps:
+
+1794488096 (antigo) → Error: Unknown configuration variable "local_prefix" ❌
+
+1794488121 (intermediário) → só chown + Loading config ✅
+
+1794488133 (atual) → só chown + Loading config ✅
+
+A Fatia 1 está tecnicamente fechada. Só falta o teste de aceite — ver os dados chegando no broker local.
+
+Teste final (com o Wokwi rodando agora)
+bash
+cd ~/Desktop/monitoramento-cpd
+docker compose exec mosquitto mosquitto_sub -h localhost -t 'publico/#' -v
+O que esperar (a cada ~30s):
+
+text
+publico/rack_monitor_ABCD1234/status/lwt {"status":"online"}
+publico/rack_monitor_ABCD1234/status     {"estado":"NORMAL","modo":"ARMADO",...}
+publico/rack_monitor_ABCD1234/ambiente   {"temp_c":24.0,"umid_pct":40.0,...}
+publico/rack_monitor_ABCD1234/heartbeat  {"uptime_s":30,...}
+Repare no prefixo publico/ — prova de que a mensagem saiu do broker.emqx.io e foi republicada dentro da sua rede Docker pelo Mosquitto local.
+
+Ctrl+C para parar.
+
+Se aparecer os JSONs → Fatia 1 ✅
+Me diga "ok" (ou cole os 2–3 JSONs que apareceram) e eu te passo a Fatia 2 completa:
+
+Host esp32-cpd no Zabbix
+
+Item mestre MQTT (zabbix_agent via MQTT client) apontado para publico/rack_monitor_ABCD1234/status
+
+JSONPath nos dependentes: $.temp_c, $.umid_pct, $.porta, $.modo, $.estado, $.invasoes, $.uptime_s (via heartbeat)
+
+Validação em Monitoring → Latest data
+
+Para isso, na Fatia 2 a gente vai precisar:
+
+Instalar o plugin MQTT no Zabbix (zabbix-server-mqtt ou usar mqtt como tipo de item nativo)
+
+Configurar o host MQTT no Zabbix
+
+Criar as macros ({$MQTT.HOST}, {$MQTT.TOPIC})
+
+Já vou adiantando: o Zabbix 7.0 já traz o item type "MQTT agent" nativo — não precisa de plugin externo. Só configurar o host e o tópico.
+
+Um aviso para o futuro (não agora)
+Os chown: Read-only file system vão aparecer para sempre nos logs. Ignore. É só o entrypoint tentando ajustar dono dos arquivos em modo read-only. Não afeta nada — a stack funciona 100%.
+
+Se um dia quiser silenciar, é só trocar o mount de :ro para :rw no docker-compose.yml. Mas eu recomendo deixar :ro (mais seguro) e conviver com o barulho.
+
+Rode o teste do mosquitto_sub e me manda o resultado. Com isso, fechamos a Fatia 1 e partimos para a Fatia 2. 🚀
+
