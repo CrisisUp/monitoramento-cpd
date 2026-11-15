@@ -16,7 +16,7 @@ make setup
 
 Pronto! O projeto está no ar. Use make help para ver os comandos disponíveis.
 
-📌 Arquitetura
+## 📌 Arquitetura
 
 ```text
 [ Wokwi (ESP32) ]
@@ -34,63 +34,62 @@ Pronto! O projeto está no ar. Use make help para ver os comandos disponíveis.
 [ cpd-grafana ] (2D + 3D + Observabilidade)
 ```
 
-Componentes
+## Componentes
 
-Componente	O que faz
+| Componente | Descrição / Papel |
+| -- | -- |
+| ESP32 (Wokwi) | Lê sensores (porta, presença, luz, distância, temperatura, umidade) e publica JSON via MQTT |
+| Mosquitto local | Broker MQTT local com bridge para o broker público |
+| Zabbix | Coleta, itens, gatilhos, macros, alertas |
+| Grafana 2D | Dashboard com 5 painéis (Temperatura, Umidade, Modo, Estado, Histórico) |
+| Grafana 3D | NOC com sala isométrica em Three.js |
+| Prometheus | Observabilidade do pipeline (mensagens MQTT/s, CPU, memória) |
 
-ESP32 (Wokwi)	Lê sensores (porta, presença, luz, distância, temperatura, umidade) e publica JSON via MQTT
-Mosquitto local	Broker MQTT local com bridge para o broker público
-Zabbix	Coleta, itens, gatilhos, macros, alertas
-Grafana 2D	Dashboard com 5 painéis (Temperatura, Umidade, Modo, Estado, Histórico)
-Grafana 3D	NOC com sala isométrica em Three.js
-Prometheus	Observabilidade do pipeline (mensagens MQTT/s, CPU, memória)
+## 🎯 O que está funcionando
 
-🎯 O que está funcionando
+| Camada | O que foi construído | Status |
+| -- | -- | -- |
+| Base Docker | Mosquitto, Zabbix, Grafana, Postgres | ✅ |
+| Ponte MQTT | Bridge do broker público para o local (prefixo publico/) | ✅ |
+| Ingestão no Zabbix | Host esp32-cpd + 9 itens dependentes (JSONPath) | ✅ |
+| Dashboard 2D | 5 painéis (Temperatura, Umidade, Modo, Estado, Histórico) | ✅ |
+| NOC 3D | Sala isométrica com rack, porta, sensor, ar-condicionado | ✅ |
+| Observabilidade | Prometheus + Grafana (mensagens MQTT/s, CPU, memória) | ✅ |
+| Testes | 20 testes (schema do firmware + idempotência do IaC) | ✅ |
+| IaC | Scripts Python idempotentes (Zabbix) + provisionamento (Grafana) | ✅ |
+| Backup | Script para dump do Postgres e Grafana | ✅ |
+| Escalabilidade | Guia para adicionar segunda sala/CPD | ✅ |
+| Deploy Windows | Guia completo + script PowerShell | ✅ |
+| ADRs | 8 decisões arquiteturais documentadas | ✅ |
 
-Camada	O que foi construído	Status
-Base Docker	Mosquitto, Zabbix, Grafana, Postgres	✅
-Ponte MQTT	Bridge do broker público para o local (prefixo publico/)	✅
-Ingestão no Zabbix	Host esp32-cpd + 9 itens dependentes (JSONPath)	✅
-Dashboard 2D	5 painéis (Temperatura, Umidade, Modo, Estado, Histórico)	✅
-NOC 3D	Sala isométrica com rack, porta, sensor, ar-condicionado	✅
-Observabilidade	Prometheus + Grafana (mensagens MQTT/s, CPU, memória)	✅
-Testes	20 testes (schema do firmware + idempotência do IaC)	✅
-IaC	Scripts Python idempotentes (Zabbix) + provisionamento (Grafana)	✅
-Backup	Script para dump do Postgres e Grafana	✅
-Escalabilidade	Guia para adicionar segunda sala/CPD	✅
-Deploy Windows	Guia completo + script PowerShell	✅
-ADRs	8 decisões arquiteturais documentadas	✅
+LICENSE MIT ✅
 
-LICENSE	MIT	✅
+## 🛠️ Pré-requisitos
 
-🛠️ Pré-requisitos
+- macOS (testado em Mac mini M4), Linux ou Windows 10/11.
+- Docker Desktop instalado e rodando.
+- Python 3 (para os scripts de IaC).
+- Make (para rodar o Makefile).
+- Wokwi (simulador online) ou ESP32 físico com o firmware RackMonitor v8.3.
 
-macOS (testado em Mac mini M4), Linux ou Windows 10/11.
+## 🚀 Passo a Passo (Happy Path)
 
-Docker Desktop instalado e rodando.
-
-Python 3 (para os scripts de IaC).
-
-Make (para rodar o Makefile).
-
-Wokwi (simulador online) ou ESP32 físico com o firmware RackMonitor v8.3.
-
-🚀 Passo a Passo (Happy Path)
-
-1. Preparar o Ambiente
+### 1. Preparar o Ambiente
 
 ```bash
 git clone https://github.com/CrisisUp/monitoramento-cpd.git
 cd monitoramento-cpd
 cp .env.example .env
+```
+
 Edite o .env com suas senhas:
 
-env
+```env
 POSTGRES_PASSWORD=umaSenhaForte
 GRAFANA_ADMIN_PASSWORD=outraSenhaForte
 ```
 
-2. Subir a Stack
+### 2. Subir a Stack
 
 ```bash
 make setup
@@ -98,51 +97,49 @@ make setup
 
 O script setup.sh faz tudo:
 
-Verifica pré-requisitos.
+- Verifica pré-requisitos.
+- Cria o .env (se não existir).
+- Sobe a stack Docker.
+- Cria o venv Python e instala dependências.
+- Configura o Zabbix via API (configurar_zabbix.py).
 
-Cria o .env (se não existir).
+### 3. Acessar as Interfaces
 
-Sobe a stack Docker.
+| O quê | Endereço | Login |
+| -- | -- | -- |
+| Zabbix | http://localhost:8080 | Admin / zabbix |
+| Grafana | http://localhost:3000 | admin / senha do .env |
+| Dashboard 2D | http://localhost:3000/d/cpd-dashboard/cpd-dashboard | — |
+| NOC 3D | http://localhost:3000/d/cpd-3d/cpd-3d | — |
+| Observabilidade | http://localhost:3000/d/cpd-observabilidade/cpd-observabilidade | — |
+| Prometheus | http://localhost:9090 | — |
 
-Cria o venv Python e instala dependências.
-
-Configura o Zabbix via API (configurar_zabbix.py).
-
-3. Acessar as Interfaces
-
-O quê	Endereço	Login
-Zabbix	http://localhost:8080	Admin / zabbix
-Grafana	http://localhost:3000	admin / senha do .env
-Dashboard 2D	http://localhost:3000/d/cpd-dashboard/cpd-dashboard	—
-NOC 3D	http://localhost:3000/d/cpd-3d/cpd-3d	—
-Observabilidade	http://localhost:3000/d/cpd-observabilidade/cpd-observabilidade	—
-Prometheus	http://localhost:9090	—
-
-1. Testar
+### 4. Testar
 
 ```bash
 make test       # 20 testes
 make health     # verifica saúde de todos os serviços
 ```
 
-📋 Comandos do dia a dia
+## 📋 Comandos do dia a dia
 
-Para…	Comando
-Subir tudo	make up
-Parar tudo (mantém volumes)	make down
-Apagar volumes e recomeçar	make reset
-Ver estado	make ps
-Ver logs	make logs
-Ver logs do Zabbix	make logs-z
-Backup	make backup
-Abrir NOC 3D	make noc3d
-Abrir Dashboard 2D	make dashboard
-Abrir Zabbix	make zabbix
-Abrir Grafana	make grafana
-Abrir Observabilidade	make observabilidade
-Rodar testes	make test
+| Para... | Comando |
+| -- | -- |
+| Subir tudo | make up |
+| Parar tudo (mantém volumes) | make down |
+| Apagar volumes e recomeçar | make reset |
+| Ver estado | make ps |
+| Ver logs | make logs |
+| Ver logs do Zabbix | make logs-z |
+| Backup | make backup |
+| Abrir NOC 3D | make noc3d |
+| Abrir Dashboard 2D | make dashboard |
+| Abrir Zabbix | make zabbix |
+| Abrir Grafana | make grafana |
+| Abrir Observabilidade | make observabilidade |
+| Rodar testes | make test |
 
-📁 Estrutura de Pastas
+## 📁 Estrutura de Pastas
 
 ```text
 monitoramento-cpd/
@@ -177,61 +174,69 @@ monitoramento-cpd/
 └── zabbix-server-custom/       # Dockerfile (mosquitto-clients + scripts)
 ```
 
-🚑 Troubleshooting (Enciclopédia de Erros)
+## 🚑 Troubleshooting (Enciclopédia de Erros)
 
 Esta seção documenta os problemas reais encontrados durante a construção
 e suas soluções.
 
-Docker / Infraestrutura
+## Docker / Infraestrutura
 
-Sintoma	Causa	Solução
-zsh: event not found: )	O zsh interpreta ! como histórico	Salve scripts em .sh e rode com bash arquivo.sh
-port is already allocated	Outro serviço usa a porta	Mude o mapeamento (ex: "8081:8080")
-cpd-postgres unhealthy	Senha com caractere especial	Coloque entre aspas: POSTGRES_PASSWORD="minha#senha"
+| Sintoma | Causa | Solução |
+| -- | -- | -- |
+| zsh: event not found: ) | O zsh interpreta ! como histórico | Salve scripts em .sh e rode com bash arquivo.sh |
+| port is already allocated | Outro serviço usa a porta | Mude o mapeamento (ex: "8081:8080") |
+| cpd-postgres unhealthy | Senha com caractere especial | Coloque entre aspas: POSTGRES_PASSWORD="minha#senha" |
 
-Mosquitto (Bridge MQTT)
+## Mosquitto (Bridge MQTT)
 
-Sintoma	Causa	Solução
-Unknown configuration variable "include"	Mosquitto 2.x usa include_dir	Use include_dir /mosquitto/config/conf.d
-Empty bridge remote_username value	Diretivas vazias são erro fatal	Remova as linhas remote_username/remote_password
-Unknown configuration variable "local_prefix"	Prefixo vai na linha topic	topic X in 1 publico/ ""
+| Sintoma | Causa | Solução |
+| -- | -- | -- |
+| Unknown configuration variable "include" | Mosquitto 2.x usa include_dir | Use include_dir /mosquitto/config/conf.d |
+| Empty bridge remote_username value | Diretivas vazias são erro fatal | Remova as linhas remote_username/remote_password |
+| Unknown configuration variable "local_prefix" | Prefixo vai na linha topic | topic X in 1 publico/ "" |
 
-Zabbix
+## Zabbix
 
-Sintoma	Causa	Solução
-Loop: LogType "console" parameter can only be used with -f	command do compose sobrescreveu o entrypoint	Use Dockerfile customizado
-SyntaxError: unterminated statement	Parser do Zabbix se confunde com -	Use External check com script .sh
-Value of type "string" is not suitable for "Numeric"	JSONPath não configurado	Adicione Preprocessing com JSONPath
-Invalid parameter "/1/trends": value must be 0	Zabbix 7.0 rejeita trends > 0 em não-float	Use trends: "0" para texto/unsigned
-unexpected parameter "hostid"	hostid é imutável no update	Remova do payload de update
+| Sintoma | Causa | Solução |
+| -- | -- | -- |
+| Loop: LogType "console" parameter can only be used with -f | command do compose sobrescreveu o entrypoint | Use Dockerfile customizado |
+| SyntaxError: unterminated statement | Parser do Zabbix se confunde com - | Use External check com script .sh |
+| Value of type "string" is not suitable for "Numeric" | JSONPath não configurado | Adicione Preprocessing com JSONPath |
+| Invalid parameter "/1/trends": value must be 0 | Zabbix 7.0 rejeita trends > 0 em não-float | Use trends: "0" para texto/unsigned |
+| unexpected parameter "hostid" | hostid é imutável no update | Remova do payload de update |
 
-Grafana (Dashboard 2D)
+## Grafana (Dashboard 2D)
 
-Sintoma	Causa	Solução
-No data em todos os painéis	Datasource Zabbix sem UID correto	Verifique uid: zabbix no zabbix.yaml
-No data em painéis de texto (Modo, Estado)	queryType: 0 (Metrics) em vez de 2 (Text)	Use queryType: "2" e tipo stat com Fields = All Fields
-Painel Modo/Estado mostra No data	vizConfig.group: table com texto	Use stat com reduceOptions.fields: "/.*/"
+| Sintoma | Causa | Solução |
+| -- | -- | -- |
+| No data em todos os painéis | Datasource Zabbix sem UID correto | Verifique uid: zabbix no zabbix.yaml |
+| No data em painéis de texto (Modo, Estado) | queryType: 0 (Metrics) em vez de 2 (Text) | Use queryType: "2" e tipo stat com Fields = All Fields |
+| Painel Modo/Estado mostra No data | vizConfig.group: table com texto | Use stat com reduceOptions.fields: "/.*/" |
 
-Grafana (NOC 3D)
+## Grafana (NOC 3D)
 
-Sintoma	Causa	Solução
-Iframe em branco	CSP do Grafana bloqueia iframes	Adicione allow_embedding = true no grafana.ini
-Iframe em branco	Falta [panels] disable_sanitize_html	Adicione [panels] disable_sanitize_html = true
-Fundo roxo	Canvas com tamanho 0	Use width:100%; height:100vh no iframe
-Failed to resolve module specifier "three"	Import de OrbitControls sem caminho local	Troque from 'three' por from '../../three.module.min.js'
+| Sintoma | Causa | Solução |
+| -- | -- | -- |
+| Iframe em branco | CSP do Grafana bloqueia iframes | Adicione allow_embedding = true no grafana.ini |
+| Iframe em branco | Falta [panels] disable_sanitize_html | Adicione [panels] disable_sanitize_html = true |
+| Fundo roxo | Canvas com tamanho 0 | Use width:100%; height:100vh no iframe |
+| Failed to resolve module specifier "three" | Import de OrbitControls sem caminho local | Troque from 'three' por from '../../three.module.min.js' |
 
-Grafana (Observabilidade)
+## Grafana (Observabilidade)
 
-Sintoma	Causa	Solução
-No data nos painéis	Datasource Prometheus não configurado	Crie prometheus.yaml com uid: prometheus
-No data nos painéis	Nomes de métricas diferentes	Use broker_messages_* (Mosquitto) e container_* (cAdvisor)
-cAdvisor não expõe CPU/memória	Limitação do macOS (Docker Desktop)	No Windows funciona 100%
+| Sintoma | Causa | Solução |
+| -- | -- | -- |
+| No data nos painéis | Datasource Prometheus não configurado | Crie prometheus.yaml com uid: prometheus |
+| No data nos painéis | Nomes de métricas diferentes | Use broker_messages_* (Mosquitto) e container_* (cAdvisor) |
+| cAdvisor não expõe CPU/memória | Limitação do macOS (Docker Desktop) | No Windows funciona 100% |
 
-Windows (Produção)
+## Windows (Produção)
 
-Sintoma	Causa	Solução
-ERR_TOO_MANY_REDIRECTS	Conflito root_url + rewrite	Troque {R:2} por {R:0} no web.config
-404 em /grafana/	Proxy do ARR desabilitado	IIS → Server Proxy Settings → Enable proxy
+| Sintoma | Causa | Solução |
+| -- | -- | -- |
+| No data nos painéis | Datasource Prometheus não configurado | Crie prometheus.yaml com uid: prometheus |
+| No data nos painéis | Nomes de métricas diferentes | Use broker_messages_* (Mosquitto) e container_* (cAdvisor) |
+| cAdvisor não expõe CPU/memória | Limitação do macOS (Docker Desktop) | No Windows funciona 100% |
 
 ## 📚 Lições Aprendidas
 
@@ -277,14 +282,15 @@ Falta apenas o Telegram (Fatia 3).
 
 ## 📚 Documentação Adicional
 
-Documento	O que contém
-docs/00-indice.md	Índice navegável de toda a documentação
-docs/00-plano.md	Roadmap e decisões
-docs/01.txt a 12.txt	Bastidores da jornada (erros e acertos)
-docs/adr/	8 ADRs (decisões arquiteturais)
-docs/protocolo-mqtt.md	Contrato do firmware (tópicos, payloads)
-docs/README.configWindows.md	Guia de deploy no Windows
-docs/como-adicionar-sala.md	Guia de escalabilidade
+| Documento | O que contém |
+| -- | -- |
+| docs/00-indice.md | Índice navegável de toda a documentação |
+| docs/00-plano.md | Roadmap e decisões |
+| docs/01.txt a 12.txt | Bastidores da jornada (erros e acertos) |
+| docs/adr/ | 8 ADRs (decisões arquiteturais) |
+| docs/protocolo-mqtt.md | Contrato do firmware (tópicos, payloads) |
+| docs/README.configWindows.md | Guia de deploy no Windows |
+| docs/como-adicionar-sala.md | Guia de escalabilidade |
 
 ## 📄 Licença
 
