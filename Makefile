@@ -31,7 +31,7 @@ endef
 
 .PHONY: help setup setup-triggers sync-triggers up down restart reset ps logs logs-z health backup \
         test-rack mqtt-restore mqtt-status \
-        noc3d dashboard zabbix grafana shell shell-mqtt clean
+        noc3d dashboard zabbix grafana shell shell-mqtt lint clean
 
 help:
 	@echo "========================================================================"
@@ -64,6 +64,7 @@ help:
 	@echo "  make grafana      - Abre o frontend do Grafana (porta 3000)"
 	@echo "  make shell        - Entra no shell do container zabbix-server"
 	@echo "  make shell-mqtt   - Entra no shell do container $(MQTT_CONTAINER)"
+	@echo "  make lint         - Valida sintaxe Python (py_compile) em scripts/"
 	@echo "  make clean        - Remove caches Python e SQLs temporários"
 
 # ------------------------------------------------------------------------------
@@ -158,6 +159,10 @@ shell:
 
 shell-mqtt:
 	@docker compose exec $(MQTT_CONTAINER) sh
+
+lint:
+	@find scripts -type f -name '*.py' -print0 | xargs -0 $(PYTHON) -m py_compile
+	@echo "✅ Sintaxe Python validada em scripts/."
 
 clean:
 	@find . -type d -name "__pycache__" -not -path "./.venv/*" -exec rm -rf {} + 2>/dev/null || true
