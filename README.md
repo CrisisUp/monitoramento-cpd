@@ -1,5 +1,7 @@
 # Monitoramento CPD - Zabbix 7.0 + Mosquitto mTLS + Observabilidade
 
+[![Lint & Unit Tests](https://github.com/CrisisUp/monitoramento-cpd/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/CrisisUp/monitoramento-cpd/actions/workflows/lint.yml)
+
 Stack de monitoramento, seguranca fisica e observabilidade para o CPD, integrada via ponte MQTT mTLS (:8883) a arquitetura distribuida do Elo5System2 (elo5-mosquitto nos topicos elo5/esp32-porta-01/status e elo5/esp32-rack-01/status).
 
 ## Arquitetura e Fluxo de Dados
