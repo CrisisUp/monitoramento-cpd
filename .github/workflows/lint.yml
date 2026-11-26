@@ -35,5 +35,16 @@ jobs:
             pip install ruff
           fi
 
+      - name: Validate Makefile syntax and targets
+        run: |
+          make -n help lint >/dev/null
+          HELP_OUT="$(make help)"
+          echo "$HELP_OUT"
+          test -n "$HELP_OUT"
+          DB="$(make -qp 2>/dev/null || true)"
+          for target in help lint check-env up sync-triggers test-rack ci; do
+            echo "$DB" | grep -Eq "^${target}:" || { echo "❌ Alvo obrigatório ausente no Makefile: ${target}"; exit 1; }
+          done
+
       - name: Run make lint
         run: make lint
