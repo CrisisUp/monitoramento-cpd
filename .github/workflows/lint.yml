@@ -45,12 +45,12 @@ jobs:
 
       - name: Validate Makefile syntax and targets
         run: |
-          make -n help lint >/dev/null
+          make -n help lint report-last >/dev/null
           HELP_OUT="$(make help)"
           echo "$HELP_OUT"
           test -n "$HELP_OUT"
           DB="$(make -qp 2>/dev/null || true)"
-          for target in help lint check-env up sync-triggers test-rack ci; do
+          for target in help lint check-env up sync-triggers test-rack ci report-last; do
             echo "$DB" | grep -Eq "^${target}:" || { echo "❌ Alvo obrigatório ausente no Makefile: ${target}"; exit 1; }
           done
 
