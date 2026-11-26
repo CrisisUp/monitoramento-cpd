@@ -28,3 +28,4 @@ backups/*.zip
 certs/*.key
 certs/*.srl
 certs/
+.venv/
