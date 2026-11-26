@@ -53,7 +53,7 @@ help:
 	@echo "  make backup       - Gera backup do PostgreSQL e do Grafana"
 	@echo ""
 	@echo " Telemetria MQTT mTLS & Testes Ponta a Ponta:"
-	@echo "  make test-rack    - Executa suíte E2E (Mosquitto mTLS 8883 + Zabbix 7.0)"
+	@echo "  make test-rack    - Sincroniza triggers e executa suíte E2E (mTLS 8883 + Zabbix 7.0)"
 	@echo "  make mqtt-restore - Restaura payload baseline (23.4°C) no tópico retido"
 	@echo "  make mqtt-status  - Lê a última mensagem retida no tópico do rack (mTLS)"
 	@echo ""
@@ -115,7 +115,7 @@ backup:
 # ------------------------------------------------------------------------------
 # Telemetria MQTT mTLS & Testes Ponta a Ponta
 # ------------------------------------------------------------------------------
-test-rack:
+test-rack: sync-triggers
 	$(LOAD_DOTENV) && \
 	MQTT_CONTAINER="$(MQTT_CONTAINER)" \
 	MQTT_PORT="8883" \
