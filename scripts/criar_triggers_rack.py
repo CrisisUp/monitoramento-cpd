@@ -229,6 +229,48 @@ def _find_matching_trigger(
     return None
 
 
+SHOW_DIFF = os.getenv("ZABBIX_SHOW_DIFF", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+def _diff_trigger(
+    target: dict[str, Any], spec: dict[str, Any]
+) -> dict[str, tuple[Any, Any]]:
+    """Retorna {campo: (esperado, atual)} para cada atributo divergente no Zabbix."""
+    diffs: dict[str, tuple[Any, Any]] = {}
+
+    expected_desc = str(spec["description"])
+    actual_desc = str(target.get("description", ""))
+    if actual_desc != expected_desc:
+        diffs["description"] = (expected_desc, actual_desc)
+
+    expected_expr = str(spec["expression"])
+    actual_expr = str(target.get("expression", ""))
+    if actual_expr != expected_expr:
+        diffs["expression"] = (expected_expr, actual_expr)
+
+    expected_prio = int(spec["priority"])
+    actual_prio = int(target.get("priority", -1))
+    if actual_prio != expected_prio:
+        diffs["priority"] = (expected_prio, actual_prio)
+
+    expected_comments = str(spec.get("comments", ""))
+    actual_comments = str(target.get("comments", ""))
+    if actual_comments != expected_comments:
+        diffs["comments"] = (expected_comments, actual_comments)
+
+    expected_tags = _normalize_tags(spec.get("tags"))
+    actual_tags = _normalize_tags(target.get("tags"))
+    if actual_tags != expected_tags:
+        diffs["tags"] = (expected_tags, actual_tags)
+
+    return diffs
+
+
 def sync_triggers(
     client: ZabbixRPCClient,
     host_id: str,
@@ -248,6 +290,7 @@ def sync_triggers(
                 "comments",
                 "status",
             ],
+            "expandExpression": True,
             "selectTags": ["tag", "value"],
             "sortfield": "triggerid",
             "sortorder": "ASC",
@@ -271,17 +314,18 @@ def sync_triggers(
         tid = str(target["triggerid"])
         matched_ids.add(tid)
 
-        needs_update = (
-            str(target.get("description", "")) != str(desc)
-            or str(target.get("expression", "")) != str(spec["expression"])
-            or int(target.get("priority", -1)) != int(spec["priority"])
-            or str(target.get("comments", "")) != str(spec.get("comments", ""))
-            or _normalize_tags(target.get("tags")) != _normalize_tags(spec.get("tags"))
-        )
+        diffs = _diff_trigger(target, spec)
 
-        if not needs_update:
+        if not diffs:
             print(f"[OK] triggerid={tid} | {desc}")
             continue
+
+        if SHOW_DIFF:
+            for field, (expected_val, actual_val) in diffs.items():
+                print(
+                    f"  [DIFF triggerid={tid}.{field}] "
+                    f"esperado={expected_val!r} | atual={actual_val!r}"
+                )
 
         update_payload: dict[str, Any] = {
             "triggerid": tid,
