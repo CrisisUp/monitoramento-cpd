@@ -35,7 +35,7 @@ endef
 
 .PHONY: help check-env setup setup-triggers sync-triggers up down restart reset \
         ps logs logs-z health backup \
-        test-rack ci mqtt-restore mqtt-status \
+        test-rack ci report-last mqtt-restore mqtt-status \
         noc3d dashboard zabbix grafana shell shell-mqtt lint clean
 
 # ------------------------------------------------------------------------------
@@ -115,6 +115,10 @@ test-rack: sync-triggers ## Sincroniza triggers e executa suíte E2E (Mosquitto 
 	$(PYTHON) scripts/suite_testes_rack.py
 
 ci: lint test-rack ## Pipeline completo: validação estática (lint) + sincronização IaC + suíte E2E
+
+report-last: ## Exibe formatado no terminal o último relatório JSON em reports/e2e_latest.json
+	@test -f reports/e2e_latest.json || { echo "❌ Nenhum relatório encontrado em reports/e2e_latest.json. Rode make test-rack primeiro."; exit 1; }
+	@$(PYTHON) -c 'import json, pathlib; d = json.loads(pathlib.Path("reports/e2e_latest.json").read_text(encoding="utf-8")); s = d["summary"]; print("=" * 72); print(f"RELATÓRIO E2E — {d["host"]} | STATUS: {d["status"]} ({s["passed"]}/{s["total_triggers"]} triggers)"); print(f"Início UTC : {d["started_at_utc"]}"); print(f"Fim UTC    : {d["finished_at_utc"]} (duração: {d["duration_seconds"]}s)"); print("-" * 72); [print(f"  Trigger {tr["triggerid"]:<6} | PROBLEM={str(tr["problem_eventid"]):<6} | OK={str(tr["ok_eventid"]):<6} | rec={str(tr["recovery_seconds"])+"s":<5} | {tr["name"]}") for tr in d["triggers"]]; print("=" * 72)'
 
 mqtt-restore: check-env ## Restaura payload baseline (23.4°C, porta fechada, 0 invasões) no tópico retido
 	$(LOAD_DOTENV)
