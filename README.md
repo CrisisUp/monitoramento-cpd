@@ -69,3 +69,10 @@ Ao final de cada execução de `make test-rack` ou `make ci` (tanto em `PASS` qu
 | `25232` | Temperatura crítica | Disparo por limite de temperatura e recuperação ao normalizar |
 | `25235` | Porta aberta | `last(/esp32-rack-01/esp32.porta)="ABERTA"` (reed switch / item `50760`) |
 | `25236` | Invasão física | `last(/esp32-rack-01/esp32.invasoes)>0` (contador de invasões / item `50764`) |
+
+### Hierarquia Causal (`Trigger Dependencies`) e Governança (`Services & SLA 99.9%`)
+
+Além do provisionamento de hosts, itens e triggers, o `configurar_zabbix.py` modela a dependência causal entre eventos e a visão executiva de disponibilidade no Zabbix 7.0:
+
+* **Supressão de Tempestade de Alertas:** todas as triggers operacionais (botão de pânico, invasão física, porta aberta e temperatura) dependem da trigger raiz `Sem telemetria MQTT há {$ESP32.SEM_DADOS}`, evitando alertas falsos em cascata durante quedas de energia ou rede. Na camada térmica, o aviso preventivo também depende da trigger crítica.
+* **Árvore de Services e SLA Mensal (99.9%):** triggers são roteadas automaticamente por tags semânticas (`climatizacao`, `seguranca-fisica` e `conectividade`) para os subdomínios de **`CPD - Infraestrutura Crítica`**, com apuração contínua de SLA mensal (`America/Sao_Paulo`).
