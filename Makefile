@@ -29,7 +29,7 @@ define LOAD_DOTENV
 		[print(f"export {k}={shlex.quote(v)}") for k, v in pairs if k and k not in os.environ]')"
 endef
 
-.PHONY: help setup setup-triggers up down restart reset ps logs logs-z health backup \
+.PHONY: help setup setup-triggers sync-triggers up down restart reset ps logs logs-z health backup \
         test-rack mqtt-restore mqtt-status \
         noc3d dashboard zabbix grafana shell shell-mqtt clean
 
@@ -39,7 +39,7 @@ help:
 	@echo "========================================================================"
 	@echo " Ciclo de Vida da Stack:"
 	@echo "  make setup          - Primeira vez: cria .env, sobe stack e roda IaC"
-	@echo "  make setup-triggers - Cria triggers de porta aberta (25235) e invasão (25236) no Zabbix"
+	@echo "  make sync-triggers  - Sincroniza macro {$TEMP.CRITICO} e triggers (25232, 25235, 25236) no Zabbix"
 	@echo "  make up           - Sobe todos os containers em background"
 	@echo "  make down         - Para a stack (mantém volumes persistentes)"
 	@echo "  make restart      - Reinicia os containers da stack"
@@ -72,6 +72,8 @@ help:
 setup:
 	@bash scripts/setup.sh
 	@$(MAKE) setup-triggers
+
+sync-triggers: setup-triggers
 
 setup-triggers:
 	$(LOAD_DOTENV) && \
