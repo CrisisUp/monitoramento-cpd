@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime
+
 import requests
 
 ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080/api_jsonrpc.php")
@@ -105,4 +106,3 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"Falha na execução: {exc}", file=sys.stderr)
         sys.exit(1)
-        

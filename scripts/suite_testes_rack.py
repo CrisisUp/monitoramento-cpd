@@ -8,12 +8,12 @@ das triggers 25232 (Temperatura), 25235 (Porta Aberta) e 25236 (Invasão).
 import json
 import os
 import shutil
-from pathlib import Path
 import subprocess
 import sys
-from datetime import datetime, timezone
 import time
 import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
 
 ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080/api_jsonrpc.php")
 ZABBIX_USER = os.getenv("ZABBIX_USER", "Admin")

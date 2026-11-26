@@ -2,8 +2,6 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-import pytest
-
 import scripts.suite_testes_rack as suite
 
 

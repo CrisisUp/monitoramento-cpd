@@ -2,10 +2,10 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
-import subprocess
 
 PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
 GRAFANA_URL = os.getenv("GRAFANA_URL", "http://localhost:3000")
@@ -230,7 +230,7 @@ def check_zabbix():
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 
-    from configurar_zabbix import ZabbixAPI, API_URL, ZABBIX_USER, ZABBIX_PASSWORD
+    from configurar_zabbix import API_URL, ZABBIX_PASSWORD, ZABBIX_USER, ZabbixAPI
 
     print("=== [Zabbix] Problemas Ativos, Triggers e Macros ===")
     api = ZabbixAPI(API_URL, ZABBIX_USER, ZABBIX_PASSWORD)

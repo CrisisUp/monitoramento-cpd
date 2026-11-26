@@ -8,10 +8,10 @@ from configurar_zabbix import (
     VT_FLOAT,
     VT_TEXT,
     VT_UNSIGNED,
+    upsert_dependent_item,
     upsert_group,
     upsert_host,
     upsert_master_item,
-    upsert_dependent_item,
 )
 
 
@@ -145,7 +145,8 @@ def test_upsert_item_nao_duplica(zabbix_mock):
 
 
 from unittest.mock import MagicMock
-from configurar_zabbix import SEV_HIGH, SEV_WARNING, upsert_triggers
+
+from configurar_zabbix import SEV_HIGH, upsert_triggers
 
 
 def _make_api_with_items(keys, existing_triggers=None):
@@ -190,7 +191,6 @@ def test_upsert_triggers_cria_apenas_triggers_compativeis_com_os_itens_do_no():
 
 def test_upsert_triggers_atualiza_em_reexecucao_idempotente():
     topic = "elo5/esp32-rack-01/status"
-    master_key = f"mqtt_status.sh[\"{topic}\"]"
     desc_crit = "[esp32-rack-01] Temperatura crítica acima de {$TEMP.CRITICO}°C"
     desc_warn = "[esp32-rack-01] Temperatura em alerta acima de {$TEMP.ALERTA}°C"
     api = _make_api_with_items(["esp32.temp"], {desc_crit: "25232"})

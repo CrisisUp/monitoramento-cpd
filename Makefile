@@ -159,9 +159,14 @@ shell: ## Entra no shell interativo do container zabbix-server
 shell-mqtt: ## Entra no shell interativo do container cpd-mosquitto
 	$(COMPOSE) exec $(MQTT_CONTAINER) sh
 
-lint: ## Valida sintaxe Python (py_compile) em todos os arquivos de scripts/
-	@find scripts -type f -name '*.py' -print0 | xargs -0 $(PYTHON) -m py_compile
-	@echo "✅ Sintaxe Python validada em scripts/."
+lint: ## Valida sintaxe Python (py_compile) e qualidade estática (ruff) em scripts/ e tests/
+	@find scripts tests -type f -name '*.py' -print0 | xargs -0 $(PYTHON) -m py_compile
+	@if $(PYTHON) -m ruff --version >/dev/null 2>&1; then \
+		$(PYTHON) -m ruff check scripts tests; \
+	else \
+		echo "ℹ️  ruff não instalado em $(PYTHON); pulando análise estática."; \
+	fi
+	@echo "✅ Sintaxe e lint Python validados em scripts/ e tests/."
 
 clean: ## Remove caches Python (__pycache__, .pyc) e temporários
 	@find . -type d -name '__pycache__' -prune -exec rm -rf {} +
