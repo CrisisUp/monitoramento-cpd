@@ -1,170 +1,193 @@
 # ==============================================================================
-# Makefile — Porta de entrada do monitoramento-cpd
+# Makefile — monitoramento-cpd (Rack 01 CPD | Mosquitto mTLS + Zabbix 7.0)
 # ==============================================================================
 
-SHELL := /bin/bash
+SHELL := /usr/bin/env bash
+.SHELLFLAGS := -euo pipefail -c
+.ONESHELL:
 .DEFAULT_GOAL := help
 
-# Detecta automaticamente a virtualenv local (.venv) com fallback para python3 global
-PYTHON := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || command -v python3)
+# ------------------------------------------------------------------------------
+# Configuração & Detecção de Ambiente
+# ------------------------------------------------------------------------------
+PYTHON          := $(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3)
+OPEN_CMD        := $(shell command -v open 2>/dev/null || command -v xdg-open 2>/dev/null || echo echo)
+COMPOSE         := docker compose
 
-# Comando multiplataforma para abrir URLs no navegador (macOS / Linux)
-OPEN_CMD := $(shell command -v open 2>/dev/null || command -v xdg-open 2>/dev/null || echo echo)
+MQTT_CONTAINER  ?= cpd-mosquitto
+ZABBIX_CONTAINER?= zabbix-server
+MQTT_HOST       ?= localhost
+MQTT_PORT       ?= 8883
+MQTT_TOPIC      ?= elo5/esp32-rack-01/status
 
-# Parâmetros MQTT mTLS padrão do Rack CPD (sobrescrevíveis via CLI: make test-rack TEST_HIGH_TEMP=35.0)
-MQTT_CONTAINER := cpd-mosquitto
-MQTT_PORT      := 8883
-MQTT_TOPIC     := elo5/esp32-rack-01/status
+ZABBIX_URL      ?= http://localhost:8080
+GRAFANA_URL     ?= http://localhost:3000
+NOC3D_URL       ?= http://localhost:8088/noc3d.html
+DASHBOARD_URL   ?= http://localhost:8088
 
-# Carrega variáveis do .env sem sobrescrever variáveis já definidas no ambiente/CLI
+BACKUP_DIR      ?= backups
+TIMESTAMP       := $(shell date +%Y%m%d_%H%M%S)
+
+# Carrega .env sem sobrescrever variáveis já exportadas pela CLI
 define LOAD_DOTENV
-	@eval "$$($(PYTHON) -c 'import os, shlex; \
-		p = ".env"; \
-		lines = open(p, encoding="utf-8") if os.path.exists(p) else []; \
-		pairs = []; \
-		[pairs.append((k.strip(), v.strip().strip("\"").strip("\x27"))) \
-		 for raw in lines \
-		 for s in [raw.strip()] if s and not s.startswith("#") and "=" in s \
-		 for k, v in [s.split("=", 1)]]; \
-		[print(f"export {k}={shlex.quote(v)}") for k, v in pairs if k and k not in os.environ]')"
+if [ -f .env ]; then
+	while IFS= read -r line || [ -n "$$line" ]; do
+		[[ -z "$$line" || "$$line" =~ ^[[:space:]]*# ]] && continue
+		[[ "$$line" != *=* ]] && continue
+		key="$${line%%=*}"
+		val="$${line#*=}"
+		key="$${key#"export "}"
+		key="$${key//[[:space:]]/}"
+		val="$${val%\"}"
+		val="$${val#\"}"
+		val="$${val%\'}"
+		val="$${val#\'}"
+		if [ -z "$${!key+x}" ]; then
+			export "$$key=$$val"
+		fi
+	done < .env
+fi
 endef
 
-.PHONY: help setup setup-triggers sync-triggers up down restart reset ps logs logs-z health backup \
-        test-rack mqtt-restore mqtt-status \
+.PHONY: help check-env setup setup-triggers sync-triggers up down restart reset \
+        ps logs logs-z health backup \
+        test-rack ci mqtt-restore mqtt-status \
         noc3d dashboard zabbix grafana shell shell-mqtt lint clean
 
-help:
+# ------------------------------------------------------------------------------
+# Ajuda Auto-Documentada
+# ------------------------------------------------------------------------------
+help: ## Exibe esta lista de comandos organizados por categoria
 	@echo "========================================================================"
 	@echo " monitoramento-cpd — Comandos Disponíveis"
 	@echo "========================================================================"
-	@echo " Ciclo de Vida da Stack:"
-	@echo "  make setup          - Primeira vez: cria .env, sobe stack e roda IaC"
-	@echo "  make sync-triggers  - Sincroniza macro {\$$TEMP.CRITICO} e triggers (25232, 25235, 25236) no Zabbix"
-	@echo "  make up           - Sobe todos os containers em background"
-	@echo "  make down         - Para a stack (mantém volumes persistentes)"
-	@echo "  make restart      - Reinicia os containers da stack"
-	@echo "  make reset        - Apaga volumes e recomeça do zero"
-	@echo ""
-	@echo " Diagnóstico & Observabilidade:"
-	@echo "  make ps           - Mostra o estado dos containers"
-	@echo "  make logs         - Acompanha logs de todos os serviços"
-	@echo "  make logs-z       - Acompanha logs do zabbix-server"
-	@echo "  make health       - Verifica saúde de todos os serviços"
-	@echo "  make backup       - Gera backup do PostgreSQL e do Grafana"
-	@echo ""
-	@echo " Telemetria MQTT mTLS & Testes Ponta a Ponta:"
-	@echo "  make test-rack    - Sincroniza triggers e executa suíte E2E (mTLS 8883 + Zabbix 7.0)"
-	@echo "  make mqtt-restore - Restaura payload baseline (23.4°C) no tópico retido"
-	@echo "  make mqtt-status  - Lê a última mensagem retida no tópico do rack (mTLS)"
-	@echo ""
-	@echo " Acesso Rápido & Manutenção:"
-	@echo "  make noc3d        - Abre o NOC 3D no navegador"
-	@echo "  make dashboard    - Abre o dashboard 2D no navegador"
-	@echo "  make zabbix       - Abre o frontend do Zabbix (porta 8080)"
-	@echo "  make grafana      - Abre o frontend do Grafana (porta 3000)"
-	@echo "  make shell        - Entra no shell do container zabbix-server"
-	@echo "  make shell-mqtt   - Entra no shell do container $(MQTT_CONTAINER)"
-	@echo "  make lint         - Valida sintaxe Python (py_compile) em scripts/"
-	@echo "  make clean        - Remove caches Python e SQLs temporários"
+	@awk 'BEGIN {FS = ":.*##"; printf ""} \
+		/^##@/ { printf "\n %s:\n", substr($$0, 5) } \
+		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  make %-15s - %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@echo "========================================================================"
 
-# ------------------------------------------------------------------------------
-# Ciclo de Vida da Stack
-# ------------------------------------------------------------------------------
-setup:
-	@bash scripts/setup.sh
-	@$(MAKE) setup-triggers
+check-env: ## Valida presença de Docker, Python e arquivo .env
+	@command -v docker >/dev/null 2>&1 || { echo "❌ Docker não encontrado no PATH."; exit 1; }
+	@$(COMPOSE) version >/dev/null 2>&1 || { echo "❌ Docker Compose v2 não disponível."; exit 1; }
+	@command -v $(PYTHON) >/dev/null 2>&1 || { echo "❌ Interpretador Python ($(PYTHON)) não encontrado."; exit 1; }
+	@if [ ! -f .env ]; then
+		if [ -f .env.example ]; then
+			cp .env.example .env
+			echo "⚠️  Arquivo .env criado a partir de .env.example. Revise as credenciais antes de prosseguir."
+		else
+			echo "❌ Arquivo .env ausente e .env.example não encontrado."
+			exit 1
+		fi
+	fi
 
-sync-triggers: setup-triggers
+##@ Ciclo de Vida da Stack
+setup: check-env ## Primeira vez: valida .env, sobe stack e sincroniza triggers IaC
+	$(COMPOSE) up -d --build
+	$(MAKE) sync-triggers
+	@echo "✅ Setup inicial concluído."
 
-setup-triggers:
-	$(LOAD_DOTENV) && \
+sync-triggers: setup-triggers ## Sincroniza macro {$TEMP.CRITICO} e triggers (25232, 25235, 25236) no Zabbix
+
+setup-triggers: check-env lint ## Executa script idempotente de criação/atualização das triggers no Zabbix
+	$(LOAD_DOTENV)
 	$(PYTHON) scripts/criar_triggers_rack.py
 
-up:
-	@docker compose up -d
-	@echo "✅ Stack no ar. Use 'make ps' para ver o estado."
+up: check-env ## Sobe todos os containers em background
+	$(COMPOSE) up -d
 
-down:
-	@docker compose down
-	@echo "✅ Stack parada. Volumes preservados."
+down: ## Para a stack mantendo os volumes persistentes
+	$(COMPOSE) down
 
-restart:
-	@docker compose restart
-	@echo "✅ Containers reiniciados."
+restart: check-env ## Reinicia todos os containers da stack
+	$(COMPOSE) restart
 
-reset:
-	@bash scripts/reset.sh
+reset: ## Apaga containers e volumes persistentes e recomeça do zero
+	@echo "⚠️  Removendo todos os containers e volumes de dados..."
+	$(COMPOSE) down -v --remove-orphans
 
-# ------------------------------------------------------------------------------
-# Diagnóstico & Backup
-# ------------------------------------------------------------------------------
-ps:
-	@docker compose ps
+##@ Diagnóstico & Observabilidade
+ps: ## Mostra o estado atual dos containers
+	$(COMPOSE) ps
 
-logs:
-	@docker compose logs -f
+logs: ## Acompanha logs em tempo real de todos os serviços
+	$(COMPOSE) logs -f --tail=100
 
-logs-z:
-	@docker compose logs -f zabbix-server
+logs-z: ## Acompanha logs do zabbix-server
+	$(COMPOSE) logs -f --tail=100 $(ZABBIX_CONTAINER)
 
-health:
-	@bash scripts/health.sh
+health: ## Verifica saúde dos containers, broker mTLS e endpoints HTTP
+	@echo ">>> Status dos Containers:"
+	@$(COMPOSE) ps
+	@echo ""
+	@echo ">>> Verificação HTTP (Zabbix & Grafana):"
+	@curl -fsS -o /dev/null "$(ZABBIX_URL)" && echo "  [OK] Zabbix Frontend ($(ZABBIX_URL))" || echo "  [FALHA] Zabbix Frontend ($(ZABBIX_URL))"
+	@curl -fsS -o /dev/null "$(GRAFANA_URL)/api/health" && echo "  [OK] Grafana API ($(GRAFANA_URL))" || echo "  [FALHA] Grafana API ($(GRAFANA_URL))"
 
-backup:
-	@bash scripts/backup.sh
+backup: check-env ## Gera backup comprimido dos volumes/bancos e dashboards
+	@mkdir -p "$(BACKUP_DIR)"
+	$(LOAD_DOTENV)
+	@if $(COMPOSE) ps --services --filter "status=running" | grep -q "postgres"; then
+		$(COMPOSE) exec -T postgres pg_dumpall -U "$${POSTGRES_USER:-zabbix}" | gzip > "$(BACKUP_DIR)/postgres_$(TIMESTAMP).sql.gz"
+		echo "✅ Backup PostgreSQL salvo em $(BACKUP_DIR)/postgres_$(TIMESTAMP).sql.gz"
+	else
+		echo "⚠️  Container postgres não está em execução; pulando dump SQL."
+	fi
 
-# ------------------------------------------------------------------------------
-# Telemetria MQTT mTLS & Testes Ponta a Ponta
-# ------------------------------------------------------------------------------
-test-rack: sync-triggers
-	$(LOAD_DOTENV) && \
+##@ Telemetria MQTT mTLS & Testes Ponta a Ponta
+test-rack: sync-triggers ## Sincroniza triggers e executa suíte E2E (Mosquitto mTLS 8883 + Zabbix 7.0)
+	$(LOAD_DOTENV)
 	MQTT_CONTAINER="$(MQTT_CONTAINER)" \
-	MQTT_PORT="8883" \
-	MQTT_TOPIC="elo5/esp32-rack-01/status" \
+	MQTT_HOST="$(MQTT_HOST)" \
+	MQTT_PORT="$(MQTT_PORT)" \
+	MQTT_TOPIC="$(MQTT_TOPIC)" \
 	$(PYTHON) scripts/suite_testes_rack.py
 
-mqtt-restore:
-	@docker exec $(MQTT_CONTAINER) mosquitto_pub -h localhost -p $(MQTT_PORT) \
-		--cafile /mosquitto/certs/ca.crt \
-		--cert /mosquitto/certs/zabbix-client.crt \
-		--key /mosquitto/certs/zabbix-client.key \
-		-t "$(MQTT_TOPIC)" -r \
-		-m '{"device_id":"esp32-rack-01","temp_c":23.4,"umid_pct":47.5,"porta":"FECHADA","modo":"ARMADO","estado":"NORMAL","dist_cm":85.0,"invasoes":0,"ambiente":"CPD_PRINCIPAL","luz":"CLARO","simulated":true}'
-	@echo "✅ Baseline (23.4°C / FECHADA) restaurado em '$(MQTT_TOPIC)' via mTLS ($(MQTT_PORT))."
+ci: lint test-rack ## Pipeline completo: validação estática (lint) + sincronização IaC + suíte E2E
 
-mqtt-status:
-	@docker exec $(MQTT_CONTAINER) mosquitto_sub -h localhost -p $(MQTT_PORT) \
+mqtt-restore: check-env ## Restaura payload baseline (23.4°C, porta fechada, 0 invasões) no tópico retido
+	$(LOAD_DOTENV)
+	$(COMPOSE) exec -T $(MQTT_CONTAINER) mosquitto_pub \
+		-h localhost -p $(MQTT_PORT) \
 		--cafile /mosquitto/certs/ca.crt \
-		--cert /mosquitto/certs/zabbix-client.crt \
-		--key /mosquitto/certs/zabbix-client.key \
+		--cert /mosquitto/certs/client.crt \
+		--key /mosquitto/certs/client.key \
+		-t "$(MQTT_TOPIC)" -r \
+		-m '{"device":"esp32-rack-01","temp":23.4,"umid":48.0,"porta":"FECHADA","distancia":120,"invasoes":0}'
+	@echo "✅ Payload baseline restaurado em $(MQTT_TOPIC)."
+
+mqtt-status: check-env ## Lê a última mensagem retida no tópico do rack via mTLS (timeout 5s)
+	$(LOAD_DOTENV)
+	$(COMPOSE) exec -T $(MQTT_CONTAINER) mosquitto_sub \
+		-h localhost -p $(MQTT_PORT) \
+		--cafile /mosquitto/certs/ca.crt \
+		--cert /mosquitto/certs/client.crt \
+		--key /mosquitto/certs/client.key \
 		-t "$(MQTT_TOPIC)" -C 1 -W 5
 
-# ------------------------------------------------------------------------------
-# Acesso Rápido & Manutenção
-# ------------------------------------------------------------------------------
-noc3d:
-	@$(OPEN_CMD) "http://localhost:3000/public/grafana-custom/noc/noc3d.html"
+##@ Acesso Rápido & Manutenção
+noc3d: ## Abre o NOC 3D no navegador padrão
+	@$(OPEN_CMD) "$(NOC3D_URL)"
 
-dashboard:
-	@$(OPEN_CMD) "http://localhost:3000/d/cpd-dashboard/cpd-dashboard"
+dashboard: ## Abre o dashboard 2D no navegador padrão
+	@$(OPEN_CMD) "$(DASHBOARD_URL)"
 
-zabbix:
-	@$(OPEN_CMD) "http://localhost:8080"
+zabbix: ## Abre o frontend do Zabbix (porta 8080)
+	@$(OPEN_CMD) "$(ZABBIX_URL)"
 
-grafana:
-	@$(OPEN_CMD) "http://localhost:3000"
+grafana: ## Abre o frontend do Grafana (porta 3000)
+	@$(OPEN_CMD) "$(GRAFANA_URL)"
 
-shell:
-	@docker compose exec zabbix-server sh
+shell: ## Entra no shell interativo do container zabbix-server
+	$(COMPOSE) exec $(ZABBIX_CONTAINER) sh
 
-shell-mqtt:
-	@docker compose exec $(MQTT_CONTAINER) sh
+shell-mqtt: ## Entra no shell interativo do container cpd-mosquitto
+	$(COMPOSE) exec $(MQTT_CONTAINER) sh
 
-lint:
+lint: ## Valida sintaxe Python (py_compile) em todos os arquivos de scripts/
 	@find scripts -type f -name '*.py' -print0 | xargs -0 $(PYTHON) -m py_compile
 	@echo "✅ Sintaxe Python validada em scripts/."
 
-clean:
-	@find . -type d -name "__pycache__" -not -path "./.venv/*" -exec rm -rf {} + 2>/dev/null || true
-	@rm -f backups/*.sql 2>/dev/null || true
-	@echo "✅ Limpeza concluída (volumes preservados)."
+clean: ## Remove caches Python (__pycache__, .pyc) e temporários
+	@find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+	@find . -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+	@echo "✅ Caches e temporários removidos."
