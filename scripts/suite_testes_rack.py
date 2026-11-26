@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 import time
 import urllib.request
 
@@ -150,7 +151,51 @@ def wait_for_trigger(client: ZabbixClient, triggerid: str, expected_value: str, 
     )
 
 
+def audit_generated_events(
+    rpc_client,
+    trigger_ids: list[str],
+    time_from: int,
+) -> None:
+    """Consulta event.get no Zabbix e imprime os eventids PROBLEM e OK gerados."""
+    events = (
+        rpc_client.call(
+            "event.get",
+            {
+                "output": ["eventid", "objectid", "clock", "ns", "value", "name"],
+                "source": 0,
+                "object": 0,
+                "objectids": trigger_ids,
+                "time_from": time_from,
+                "sortfield": ["clock", "eventid"],
+                "sortorder": "ASC",
+            },
+        )
+        or []
+    )
+
+    problems = [ev for ev in events if str(ev.get("value")) == "1"]
+    recoveries = [ev for ev in events if str(ev.get("value")) == "0"]
+
+    print("\n" + "-" * 72)
+    print(f"AUDITORIA DE EVENTOS ZABBIX (desde epoch={time_from})")
+    print("-" * 72)
+    print(
+        f"Total de eventos: {len(events)} "
+        f"| PROBLEM: {len(problems)} | OK: {len(recoveries)}"
+    )
+
+    for label, group in (("PROBLEM", problems), ("OK", recoveries)):
+        ids = [str(ev["eventid"]) for ev in group]
+        print(f"  [{label}] eventids: {', '.join(ids) if ids else '(nenhum)'}")
+        for ev in group:
+            ts = datetime.fromtimestamp(int(ev["clock"])).strftime("%H:%M:%S")
+            print(
+                f"    - eventid={ev['eventid']} | triggerid={ev['objectid']} "
+                f"| hora={ts} | {ev.get('name', '')}"
+            )
+
 def main() -> int:
+    suite_started_at = int(time.time()) - 5
     print("=" * 72)
     print(f"SUÍTE DE TESTES RACK CPD — {HOST_NAME} (mTLS {MQTT_PORT} + Zabbix 7.0)")
     print("=" * 72)
@@ -242,6 +287,11 @@ def main() -> int:
 
         print("=" * 72)
         print("RESULTADO FINAL: TODOS OS 6 ESTÁGIOS APROVADOS COM SUCESSO")
+        audit_generated_events(
+            client,
+            [str(TRIGGER_TEMP_ID), str(TRIGGER_PORTA_ID), str(TRIGGER_INVASAO_ID)],
+            suite_started_at,
+        )
         print("=" * 72)
         return 0
 
@@ -252,3 +302,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
