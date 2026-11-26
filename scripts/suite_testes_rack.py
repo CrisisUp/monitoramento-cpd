@@ -155,26 +155,48 @@ def audit_generated_events(
     rpc_client,
     trigger_ids: list[str],
     time_from: int,
+    wait_timeout: float = 5.0,
 ) -> None:
-    """Consulta event.get no Zabbix e imprime os eventids PROBLEM e OK gerados."""
-    events = (
-        rpc_client.call(
-            "event.get",
-            {
-                "output": ["eventid", "objectid", "clock", "ns", "value", "name"],
-                "source": 0,
-                "object": 0,
-                "objectids": trigger_ids,
-                "time_from": time_from,
-                "sortfield": ["clock", "eventid"],
-                "sortorder": "ASC",
-            },
-        )
-        or []
-    )
+    """Consulta event.get no Zabbix, imprime os eventids e falha se faltar PROBLEM ou OK."""
+    expected = {str(tid) for tid in trigger_ids}
+    deadline = time.monotonic() + wait_timeout
+    events: list[dict] = []
+    problems: list[dict] = []
+    recoveries: list[dict] = []
+    missing_problem: list[str] = []
+    missing_ok: list[str] = []
 
-    problems = [ev for ev in events if str(ev.get("value")) == "1"]
-    recoveries = [ev for ev in events if str(ev.get("value")) == "0"]
+    while True:
+        events = (
+            rpc_client.call(
+                "event.get",
+                {
+                    "output": ["eventid", "objectid", "clock", "ns", "value", "name"],
+                    "source": 0,
+                    "object": 0,
+                    "objectids": trigger_ids,
+                    "time_from": time_from,
+                    "sortfield": ["clock", "eventid"],
+                    "sortorder": "ASC",
+                },
+            )
+            or []
+        )
+
+        problems = [ev for ev in events if str(ev.get("value")) == "1"]
+        recoveries = [ev for ev in events if str(ev.get("value")) == "0"]
+
+        got_problem = {str(ev.get("objectid")) for ev in problems}
+        got_ok = {str(ev.get("objectid")) for ev in recoveries}
+
+        missing_problem = sorted(expected - got_problem)
+        missing_ok = sorted(expected - got_ok)
+
+        if not missing_problem and not missing_ok:
+            break
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
 
     print("\n" + "-" * 72)
     print(f"AUDITORIA DE EVENTOS ZABBIX (desde epoch={time_from})")
@@ -193,6 +215,22 @@ def audit_generated_events(
                 f"    - eventid={ev['eventid']} | triggerid={ev['objectid']} "
                 f"| hora={ts} | {ev.get('name', '')}"
             )
+
+    if missing_problem or missing_ok:
+        detalhes = []
+        if missing_problem:
+            detalhes.append(f"sem PROBLEM: {', '.join(missing_problem)}")
+        if missing_ok:
+            detalhes.append(f"sem OK: {', '.join(missing_ok)}")
+        raise RuntimeError(
+            "Auditoria de eventos Zabbix incompleta (" + " | ".join(detalhes) + ")"
+        )
+
+    print(
+        "[OK] Auditoria de eventos validada: PROBLEM e OK confirmados para "
+        + ", ".join(sorted(expected))
+    )
+
 
 def main() -> int:
     suite_started_at = int(time.time()) - 5
@@ -298,7 +336,6 @@ def main() -> int:
     except Exception as exc:
         print(f"\n[FALHA NA SUÍTE] {exc}", file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

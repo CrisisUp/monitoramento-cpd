@@ -30,23 +30,7 @@ TIMESTAMP       := $(shell date +%Y%m%d_%H%M%S)
 
 # Carrega .env sem sobrescrever variáveis já exportadas pela CLI
 define LOAD_DOTENV
-if [ -f .env ]; then
-	while IFS= read -r line || [ -n "$$line" ]; do
-		[[ -z "$$line" || "$$line" =~ ^[[:space:]]*# ]] && continue
-		[[ "$$line" != *=* ]] && continue
-		key="$${line%%=*}"
-		val="$${line#*=}"
-		key="$${key#"export "}"
-		key="$${key//[[:space:]]/}"
-		val="$${val%\"}"
-		val="$${val#\"}"
-		val="$${val%\'}"
-		val="$${val#\'}"
-		if [ -z "$${!key+x}" ]; then
-			export "$$key=$$val"
-		fi
-	done < .env
-fi
+[ ! -f .env ] || { set -a; source .env; set +a; }
 endef
 
 .PHONY: help check-env setup setup-triggers sync-triggers up down restart reset \
@@ -70,15 +54,8 @@ check-env: ## Valida presença de Docker, Python e arquivo .env
 	@command -v docker >/dev/null 2>&1 || { echo "❌ Docker não encontrado no PATH."; exit 1; }
 	@$(COMPOSE) version >/dev/null 2>&1 || { echo "❌ Docker Compose v2 não disponível."; exit 1; }
 	@command -v $(PYTHON) >/dev/null 2>&1 || { echo "❌ Interpretador Python ($(PYTHON)) não encontrado."; exit 1; }
-	@if [ ! -f .env ]; then
-		if [ -f .env.example ]; then
-			cp .env.example .env
-			echo "⚠️  Arquivo .env criado a partir de .env.example. Revise as credenciais antes de prosseguir."
-		else
-			echo "❌ Arquivo .env ausente e .env.example não encontrado."
-			exit 1
-		fi
-	fi
+	@[ -f .env ] || { [ -f .env.example ] && cp .env.example .env && echo "⚠️  .env criado a partir de .env.example." || { echo "❌ .env ausente."; exit 1; }; }
+
 
 ##@ Ciclo de Vida da Stack
 setup: check-env ## Primeira vez: valida .env, sobe stack e sincroniza triggers IaC
@@ -125,13 +102,8 @@ health: ## Verifica saúde dos containers, broker mTLS e endpoints HTTP
 
 backup: check-env ## Gera backup comprimido dos volumes/bancos e dashboards
 	@mkdir -p "$(BACKUP_DIR)"
-	$(LOAD_DOTENV)
-	@if $(COMPOSE) ps --services --filter "status=running" | grep -q "postgres"; then
-		$(COMPOSE) exec -T postgres pg_dumpall -U "$${POSTGRES_USER:-zabbix}" | gzip > "$(BACKUP_DIR)/postgres_$(TIMESTAMP).sql.gz"
-		echo "✅ Backup PostgreSQL salvo em $(BACKUP_DIR)/postgres_$(TIMESTAMP).sql.gz"
-	else
-		echo "⚠️  Container postgres não está em execução; pulando dump SQL."
-	fi
+	@$(LOAD_DOTENV); if $(COMPOSE) ps --services --filter "status=running" | grep -q "postgres"; then $(COMPOSE) exec -T postgres pg_dumpall -U "$${POSTGRES_USER:-zabbix}" | gzip > "$(BACKUP_DIR)/postgres_$(TIMESTAMP).sql.gz" && echo "✅ Backup PostgreSQL salvo em $(BACKUP_DIR)/postgres_$(TIMESTAMP).sql.gz"; else echo "⚠️  Container postgres não está em execução; pulando dump SQL."; fi
+
 
 ##@ Telemetria MQTT mTLS & Testes Ponta a Ponta
 test-rack: sync-triggers ## Sincroniza triggers e executa suíte E2E (Mosquitto mTLS 8883 + Zabbix 7.0)
