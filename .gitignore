@@ -25,3 +25,6 @@ mosquitto/log/
 backups/*.sql
 backups/*.tar.gz
 backups/*.zip
+certs/*.key
+certs/*.srl
+certs/

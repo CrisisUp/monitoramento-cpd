@@ -1,61 +1,67 @@
 #!/usr/bin/env python3
-"""Diagnóstico dos itens do Zabbix (para debug do Grafana)."""
+"""
+diag_zabbix.py — Diagnóstico rápido dos nós ESP32 (mTLS :8883) no Zabbix 7.0.
+"""
+
 import os
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv()
 
-URL = os.getenv("ZABBIX_URL", "http://localhost:8080") + "/api_jsonrpc.php"
-USER = os.getenv("ZABBIX_USER", "Admin")
-PASS = os.getenv("ZABBIX_PASSWORD", "zabbix")
-HOST = os.getenv("ESP32_HOST_NAME", "esp32-cpd")
+ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080")
+ZABBIX_USER = os.getenv("ZABBIX_USER", "Admin")
+ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD", "zabbix")
+API_URL = f"{ZABBIX_URL}/api_jsonrpc.php"
+
+TARGET_HOSTS = ["esp32-porta-01", "esp32-rack-01", "esp32-cpd"]
 
 
-def api(method, params, auth=None):
+def zbx(method, params, auth=None):
     payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
     if auth:
         payload["auth"] = auth
-    r = requests.post(URL, json=payload, timeout=10).json()
-    if "error" in r:
-        raise RuntimeError(r["error"])
-    return r["result"]
+    r = requests.post(API_URL, json=payload, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    if "error" in data:
+        raise RuntimeError(data["error"])
+    return data["result"]
 
 
 def main():
-    print(f"Conectando em {URL} ...")
-    auth = api("user.login", {"username": USER, "password": PASS})
-    print(f"  Login OK\n")
+    print(f"Conectando em {API_URL} ...")
+    auth = zbx("user.login", {"username": ZABBIX_USER, "password": ZABBIX_PASSWORD})
+    print("  Login OK\n")
 
-    hosts = api("host.get", {"filter": {"host": [HOST]}}, auth)
+    hosts = zbx("host.get", {"filter": {"host": TARGET_HOSTS}, "output": ["hostid", "host", "name"]}, auth)
     if not hosts:
-        print(f"❌ Host '{HOST}' não encontrado.")
+        print("Nenhum host ESP32 encontrado.")
         return
-    host_id = hosts[0]["hostid"]
-    print(f"Host '{HOST}' → ID {host_id}\n")
 
-    items = api("item.get", {
-        "hostids": host_id,
-        "output": ["itemid", "name", "key_", "value_type", "status", "lastvalue", "lastclock"],
-        "sortfield": "name",
-    }, auth)
+    for h in hosts:
+        print(f"Host '{h['host']}' ({h['name']}) → ID {h['hostid']}")
+        items = zbx(
+            "item.get",
+            {
+                "hostids": h["hostid"],
+                "output": ["name", "key_", "value_type", "status", "lastclock", "lastvalue", "error"],
+                "sortfield": "name",
+            },
+            auth,
+        )
+        print(f"{'NAME':<22} {'KEY':<44} {'VT':<3} {'ST':<4} {'LAST CLOCK':<12} {'LAST VALUE'}")
+        print("-" * 115)
+        for it in items:
+            st = "ON" if str(it["status"]) == "0" else "OFF"
+            val = (it.get("lastvalue") or "")[:36]
+            err = it.get("error") or ""
+            suffix = f"  [ERR: {err}]" if err else ""
+            print(f"{it['name']:<22} {it['key_']:<44} {it['value_type']:<3} {st:<4} {it['lastclock']:<12} {val}{suffix}")
+        print(f"\nTotal de itens ({h['host']}): {len(items)}\n")
 
-    print(f"{'NAME':<28} {'KEY':<20} {'VT':<3} {'ST':<4} {'LAST CLOCK':<12} {'LAST VALUE'}")
-    print("-" * 95)
-    for it in items:
-        vt = it["value_type"]
-        st = "ON" if it["status"] == "0" else "OFF"
-        last = (it.get("lastvalue") or "(vazio)")[:30]
-        clock = it.get("lastclock", "0")
-        print(f"{it['name']:<28} {it['key_']:<20} {vt:<3} {st:<4} {clock:<12} {last}")
-
-    print()
-    print("Legenda: VT = value_type (0=float, 3=unsigned, 4=text)")
-    print("         ST = status (ON=habilitado, OFF=desabilitado)")
-    print()
-    print(f"Total de itens: {len(items)}")
-
-    api("user.logout", {}, auth)
+    print("Legenda: VT = value_type (0=float, 3=unsigned, 4=text) | ST = status (ON=habilitado, OFF=desabilitado)")
+    zbx("user.logout", {}, auth)
 
 
 if __name__ == "__main__":

@@ -5,27 +5,26 @@
 
 services:
   # ---------------------------------------------------------------
-  # Broker MQTT local
+  # Broker MQTT local (1883 interno/legado + 8883 mTLS + 9001 WS)
   # ---------------------------------------------------------------
+  
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: cpd-mosquitto
     restart: unless-stopped
     ports:
       - "1883:1883"
+      - "8884:8883"
       - "9001:9001"
     volumes:
       - ./mosquitto/config:/mosquitto/config:ro
+      - ./certs:/mosquitto/certs:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     networks:
       - cpd-net
-    healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/broker/version' -C 1 -W 2 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      - elo5-net
+
 
   # ---------------------------------------------------------------
   # Banco de dados do Zabbix
@@ -64,10 +63,16 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./certs/ca.crt:/etc/zabbix/certs/ca.crt:ro
+      - ./certs/zabbix-client.crt:/etc/zabbix/certs/zabbix-client.crt:ro
+      - ./certs/zabbix-client.key:/etc/zabbix/certs/zabbix-client.key:ro
     ports:
       - "10051:10051"
     depends_on:
       postgres:
+        condition: service_healthy
+      mosquitto:
         condition: service_healthy
     networks:
       - cpd-net
@@ -201,6 +206,9 @@ services:
 networks:
   cpd-net:
     driver: bridge
+  elo5-net:
+    external: true
+    name: elo5system2_elo5-net
 
 # ============================================================
 # Volumes

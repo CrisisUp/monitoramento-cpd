@@ -1,0 +1,161 @@
+zabbix_export:
+  version: '7.0'
+  host_groups:
+    - uuid: 5bf6780c08c048708cabf6275dd8ccd0
+      name: CPD
+  hosts:
+    - host: esp32-rack-01
+      name: 'Rack 01 CPD (Nó 2)'
+      groups:
+        - name: CPD
+      items:
+        - name: Ambiente
+          type: DEPENDENT
+          key: esp32.ambiente
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ambiente
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+        - name: 'Distância Rack'
+          type: DEPENDENT
+          key: esp32.distancia
+          delay: '0'
+          value_type: FLOAT
+          units: cm
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dist_cm
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+        - name: 'Estado Geral'
+          type: DEPENDENT
+          key: esp32.estado
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.estado
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+        - name: Invasões
+          type: DEPENDENT
+          key: esp32.invasoes
+          delay: '0'
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.invasoes
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+          triggers:
+            - expression: last(/esp32-rack-01/esp32.invasoes)>0
+              name: '[esp32-rack-01] Invasão / violação detectada'
+              priority: HIGH
+        - name: Luminosidade
+          type: DEPENDENT
+          key: esp32.luz
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.luz
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+        - name: 'Modo Operação'
+          type: DEPENDENT
+          key: esp32.modo
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.modo
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+        - name: 'Porta Rack'
+          type: DEPENDENT
+          key: esp32.porta
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.porta
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+          triggers:
+            - expression: 'last(/esp32-rack-01/esp32.porta)="ABERTA" and count(/esp32-rack-01/esp32.porta,{$PORTA.TEMPO},"ne","ABERTA")=0'
+              name: '[esp32-rack-01] Porta aberta por mais de {$PORTA.TEMPO}'
+              priority: AVERAGE
+        - name: Temperatura
+          type: DEPENDENT
+          key: esp32.temp
+          delay: '0'
+          value_type: FLOAT
+          units: °C
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.temp_c
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+          triggers:
+            - expression: 'min(/esp32-rack-01/esp32.temp,1m)>{$TEMP.CRITICO}'
+              name: '[esp32-rack-01] Temperatura crítica acima de {$TEMP.CRITICO}°C'
+              priority: HIGH
+            - expression: 'min(/esp32-rack-01/esp32.temp,1m)>{$TEMP.ALERTA}'
+              name: '[esp32-rack-01] Temperatura em alerta acima de {$TEMP.ALERTA}°C'
+              priority: WARNING
+        - name: Umidade
+          type: DEPENDENT
+          key: esp32.umid
+          delay: '0'
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.umid_pct
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+        - name: 'MQTT Status (elo5/esp32-rack-01/status)'
+          type: EXTERNAL
+          key: 'mqtt_status.sh["elo5/esp32-rack-01/status"]'
+          delay: 30s
+          value_type: TEXT
+          trends: '0'
+          triggers:
+            - expression: 'nodata(/esp32-rack-01/mqtt_status.sh["elo5/esp32-rack-01/status"],{$ESP32.SEM_DADOS})=1'
+              name: '[esp32-rack-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+              priority: AVERAGE
+      macros:
+        - macro: '{$ESP32.SEM_DADOS}'
+          value: 2m
+        - macro: '{$PORTA.TEMPO}'
+          value: 1m
+        - macro: '{$TEMP.ALERTA}'
+          value: '28'
+        - macro: '{$TEMP.CRITICO}'
+          value: '32'
+        - macro: '{$UMID.ALERTA}'
+          value: '65'
+        - macro: '{$UMID.CRITICO}'
+          value: '80'
+      inventory_mode: DISABLED

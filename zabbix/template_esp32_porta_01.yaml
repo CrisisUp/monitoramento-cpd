@@ -1,0 +1,108 @@
+zabbix_export:
+  version: '7.0'
+  host_groups:
+    - uuid: 5bf6780c08c048708cabf6275dd8ccd0
+      name: CPD
+  hosts:
+    - host: esp32-porta-01
+      name: 'Porta Sala CPD (Nó 1)'
+      groups:
+        - name: CPD
+      items:
+        - name: 'Estado Geral'
+          type: DEPENDENT
+          key: esp32.estado
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.estado
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-porta-01/status"]'
+        - name: 'Modo Operação'
+          type: DEPENDENT
+          key: esp32.modo
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.modo
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-porta-01/status"]'
+        - name: 'Botão Pânico'
+          type: DEPENDENT
+          key: esp32.panico
+          delay: '0'
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.panico
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-porta-01/status"]'
+          triggers:
+            - expression: last(/esp32-porta-01/esp32.panico)>0
+              name: '[esp32-porta-01] Botão de pânico acionado'
+              priority: HIGH
+        - name: 'Porta Sala'
+          type: DEPENDENT
+          key: esp32.porta
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.porta
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-porta-01/status"]'
+          triggers:
+            - expression: 'last(/esp32-porta-01/esp32.porta)="ABERTA" and count(/esp32-porta-01/esp32.porta,{$PORTA.TEMPO},"ne","ABERTA")=0'
+              name: '[esp32-porta-01] Porta aberta por mais de {$PORTA.TEMPO}'
+              priority: AVERAGE
+        - name: 'Presença PIR'
+          type: DEPENDENT
+          key: esp32.presenca
+          delay: '0'
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.presenca
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-porta-01/status"]'
+        - name: 'Último NFC Sala'
+          type: DEPENDENT
+          key: esp32.ultimo_nfc
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ultimo_nfc
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'mqtt_status.sh["elo5/esp32-porta-01/status"]'
+        - name: 'MQTT Status (elo5/esp32-porta-01/status)'
+          type: EXTERNAL
+          key: 'mqtt_status.sh["elo5/esp32-porta-01/status"]'
+          delay: 30s
+          value_type: TEXT
+          trends: '0'
+          triggers:
+            - expression: 'nodata(/esp32-porta-01/mqtt_status.sh["elo5/esp32-porta-01/status"],{$ESP32.SEM_DADOS})=1'
+              name: '[esp32-porta-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+              priority: AVERAGE
+      macros:
+        - macro: '{$ESP32.SEM_DADOS}'
+          value: 2m
+        - macro: '{$PORTA.TEMPO}'
+          value: 1m
+      inventory_mode: DISABLED

@@ -142,3 +142,60 @@ def test_upsert_item_nao_duplica(zabbix_mock):
     assert args[0] == "item.update"
     assert args[1]["itemid"] == "1"
 
+
+
+from unittest.mock import MagicMock
+from configurar_zabbix import SEV_HIGH, SEV_WARNING, upsert_triggers
+
+
+def _make_api_with_items(keys, existing_triggers=None):
+    existing_triggers = existing_triggers or {}
+    api = MagicMock()
+    counter = {"n": 30000}
+
+    def side_effect(method, params=None):
+        params = params or {}
+        if method == "item.get":
+            return [{"itemid": str(100 + i), "key_": k} for i, k in enumerate(keys)]
+        if method == "trigger.get":
+            desc = params.get("filter", {}).get("description", "")
+            if desc in existing_triggers:
+                return [{"triggerid": existing_triggers[desc], "description": desc}]
+            return []
+        if method == "trigger.create":
+            counter["n"] += 1
+            return {"triggerids": [str(counter["n"])]}
+        if method == "trigger.update":
+            return {"triggerids": [params["triggerid"]]}
+        return []
+
+    api.call.side_effect = side_effect
+    return api
+
+
+def test_upsert_triggers_cria_apenas_triggers_compativeis_com_os_itens_do_no():
+    topic = "elo5/esp32-porta-01/status"
+    master_key = f"mqtt_status.sh[\"{topic}\"]"
+    api = _make_api_with_items([master_key, "esp32.porta", "esp32.panico"])
+    upsert_triggers(api, host_id="10684", host_name="esp32-porta-01", topic=topic)
+    creates = [c.args[1] for c in api.call.call_args_list if c.args[0] == "trigger.create"]
+    descs = {c["description"] for c in creates}
+    assert "[esp32-porta-01] Botão de pânico acionado" in descs
+    assert "[esp32-porta-01] Porta aberta por mais de {$PORTA.TEMPO}" in descs
+    assert "[esp32-porta-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}" in descs
+    assert not any("Temperatura" in d or "Invasão" in d for d in descs)
+    panico = next(c for c in creates if "pânico" in c["description"])
+    assert panico["priority"] == SEV_HIGH
+
+
+def test_upsert_triggers_atualiza_em_reexecucao_idempotente():
+    topic = "elo5/esp32-rack-01/status"
+    master_key = f"mqtt_status.sh[\"{topic}\"]"
+    desc_crit = "[esp32-rack-01] Temperatura crítica acima de {$TEMP.CRITICO}°C"
+    desc_warn = "[esp32-rack-01] Temperatura em alerta acima de {$TEMP.ALERTA}°C"
+    api = _make_api_with_items(["esp32.temp"], {desc_crit: "25232"})
+    upsert_triggers(api, host_id="10685", host_name="esp32-rack-01", topic=topic)
+    updates = [c.args[1] for c in api.call.call_args_list if c.args[0] == "trigger.update"]
+    creates = [c.args[1] for c in api.call.call_args_list if c.args[0] == "trigger.create"]
+    assert len(updates) == 1 and updates[0]["triggerid"] == "25232"
+    assert len(creates) == 1 and creates[0]["description"] == desc_warn
