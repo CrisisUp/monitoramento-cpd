@@ -238,7 +238,9 @@ SHOW_DIFF = os.getenv("ZABBIX_SHOW_DIFF", "1").strip().lower() in {
 
 
 def _diff_trigger(
-    target: dict[str, Any], spec: dict[str, Any]
+    target: dict[str, Any],
+    spec: dict[str, Any],
+    macros: dict[str, str] | None = None,
 ) -> dict[str, tuple[Any, Any]]:
     """Retorna {campo: (esperado, atual)} para cada atributo divergente no Zabbix."""
     diffs: dict[str, tuple[Any, Any]] = {}
@@ -249,8 +251,14 @@ def _diff_trigger(
         diffs["description"] = (expected_desc, actual_desc)
 
     expected_expr = str(spec["expression"])
+    expanded_expected_expr = expected_expr
+    for macro_name, macro_val in (macros or {}).items():
+        expanded_expected_expr = expanded_expected_expr.replace(
+            str(macro_name), str(macro_val)
+        )
+
     actual_expr = str(target.get("expression", ""))
-    if actual_expr != expected_expr:
+    if actual_expr not in {expected_expr, expanded_expected_expr}:
         diffs["expression"] = (expected_expr, actual_expr)
 
     expected_prio = int(spec["priority"])
@@ -314,7 +322,7 @@ def sync_triggers(
         tid = str(target["triggerid"])
         matched_ids.add(tid)
 
-        diffs = _diff_trigger(target, spec)
+        diffs = _diff_trigger(target, spec, macros={"{$TEMP.CRITICO}": os.getenv("TEMP_CRITICO", "32")})
 
         if not diffs:
             print(f"[OK] triggerid={tid} | {desc}")
