@@ -124,32 +124,21 @@ def test_upsert_item_nao_envia_hostid_no_update(zabbix_mock):
 
 
 def test_upsert_item_nao_duplica(zabbix_mock):
-    """Rodar 2x o mesmo item não cria duplicado.
-
-    A segunda chamada deve usar item.update (não item.create).
-    Como a função faz item.get + item.update, a ÚLTIMA chamada é o update.
-    """
-    # Primeira chamada: não existe -> item.get + item.create
     zabbix_mock.call.side_effect = [
-        [],  # item.get (vazio)
-        {"itemids": ["1"]},  # item.create
+        [],
+        {"itemids": ["1"]},
+        [{"itemid": "1"}],
+        {"itemids": ["1"]},
     ]
     upsert_dependent_item(
         zabbix_mock, "10683", "50740",
         "Teste", "esp32.teste", VT_FLOAT, "C", "$.campo"
     )
-
-    # Limpa o mock para a segunda chamada
-    zabbix_mock.call.reset_mock()
-    zabbix_mock.call.side_effect = [
-        [{"itemid": "1"}],  # item.get (encontrou)
-        {},  # item.update
-    ]
     upsert_dependent_item(
         zabbix_mock, "10683", "50740",
         "Teste", "esp32.teste", VT_FLOAT, "C", "$.campo"
     )
+    args, _ = zabbix_mock.call.call_args_list[3]
+    assert args[0] == "item.update"
+    assert args[1]["itemid"] == "1"
 
-    # Verifica que a ÚLTIMA chamada foi item.update
-    args, _ = zabbix_mock.call.call_args_list[-1]
-    assert args[0] == "item.update", f"Esperado item.update, mas foi {args[0]}"

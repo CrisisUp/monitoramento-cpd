@@ -1,7 +1,7 @@
 zabbix_export:
   version: '7.0'
   host_groups:
-    - uuid: 988387d69cc4407cbe2a7a2dd108a6cc
+    - uuid: 5bf6780c08c048708cabf6275dd8ccd0
       name: CPD
   hosts:
     - host: esp32-cpd
@@ -122,7 +122,6 @@ zabbix_export:
           delay: 30s
           value_type: TEXT
           trends: '0'
-          timeout: 10s
       macros:
         - macro: '{$ESP32.SEM_DADOS}'
           value: 2m

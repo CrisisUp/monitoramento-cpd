@@ -156,8 +156,9 @@ def upsert_master_item(api, host_id):
     result = api.call("item.create", {
         "hostid": host_id,
         "name": "MQTT Status",
-        "key_": MASTER_KEY,
-        "type": 21,          # 21 = External check
+        "key_": "mqtt_status.sh",
+        "params": "",
+        "type": 10,          # 10 = External check
         "value_type": VT_TEXT,
         "delay": "30s",
         "history": "31d",

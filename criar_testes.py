@@ -265,22 +265,20 @@ def test_upsert_item_nao_duplica(zabbix_mock):
     zabbix_mock.call.side_effect = [
         [],
         {"itemids": ["1"]},
-    ]
-    upsert_dependent_item(
-        zabbix_mock, "10683", "50740",
-        "Teste", "esp32.teste", VT_FLOAT, "C", "$.campo"
-    )
-    zabbix_mock.call.side_effect = [
         [{"itemid": "1"}],
-        {},
+        {"itemids": ["1"]},
     ]
     upsert_dependent_item(
         zabbix_mock, "10683", "50740",
         "Teste", "esp32.teste", VT_FLOAT, "C", "$.campo"
     )
-    args, _ = zabbix_mock.call.call_args_list[1]
+    upsert_dependent_item(
+        zabbix_mock, "10683", "50740",
+        "Teste", "esp32.teste", VT_FLOAT, "C", "$.campo"
+    )
+    args, _ = zabbix_mock.call.call_args_list[3]
     assert args[0] == "item.update"
-'''
+    assert args[1]["itemid"] == "1"
 
 # ============================================================
 # pytest.ini
