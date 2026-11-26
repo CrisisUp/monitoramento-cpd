@@ -64,3 +64,8 @@ jobs:
 
       - name: Run make lint
         run: make lint
+
+      - name: Run unit tests (pytest)
+        run: |
+          pip install pytest
+          pytest -v tests/test_e2e_report.py
