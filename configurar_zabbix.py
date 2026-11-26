@@ -334,44 +334,66 @@ def upsert_triggers(api: ZabbixAPI, host_id: str, host_name: str, topic: str) ->
     available_keys = {it["key_"] for it in host_items}
     master_key = f'{MASTER_SCRIPT}["{topic}"]'
 
+    # Ordem hierárquica: a trigger raiz de conectividade (offline) é criada primeiro
+    # para que todas as triggers filhas dependam dela, suprimindo alertas em cascata.
     candidates = [
         {
-            "description": f"[{host_name}] Botão de pânico acionado",
-            "expression": f"last(/{host_name}/esp32.panico)>0",
-            "priority": SEV_HIGH,
-            "required_keys": {"esp32.panico"},
-        },
-        {
-            "description": f"[{host_name}] Invasão / violação detectada",
-            "expression": f"last(/{host_name}/esp32.invasoes)>0",
-            "priority": SEV_HIGH,
-            "required_keys": {"esp32.invasoes"},
-        },
-        {
-            "description": f"[{host_name}] Porta aberta por mais de {{$PORTA.TEMPO}}",
-            "expression": f'last(/{host_name}/esp32.porta)="ABERTA" and count(/{host_name}/esp32.porta,{{$PORTA.TEMPO}},"ne","ABERTA")=0',
-            "priority": SEV_AVERAGE,
-            "required_keys": {"esp32.porta"},
-        },
-        {
-            "description": f"[{host_name}] Temperatura crítica acima de {{$TEMP.CRITICO}}°C",
-            "expression": f"min(/{host_name}/esp32.temp,1m)>{{$TEMP.CRITICO}}",
-            "priority": SEV_HIGH,
-            "required_keys": {"esp32.temp"},
-        },
-        {
-            "description": f"[{host_name}] Temperatura em alerta acima de {{$TEMP.ALERTA}}°C",
-            "expression": f"min(/{host_name}/esp32.temp,1m)>{{$TEMP.ALERTA}}",
-            "priority": SEV_WARNING,
-            "required_keys": {"esp32.temp"},
-        },
-        {
+            "slug": "offline",
             "description": f"[{host_name}] Sem telemetria MQTT há {{$ESP32.SEM_DADOS}}",
             "expression": f"nodata(/{host_name}/{master_key},{{$ESP32.SEM_DADOS}})=1",
             "priority": SEV_AVERAGE,
             "required_keys": {master_key},
+            "tags": [{"tag": "servico", "value": "conectividade"}],
+            "depends_on": [],
+        },
+        {
+            "slug": "panico",
+            "description": f"[{host_name}] Botão de pânico acionado",
+            "expression": f"last(/{host_name}/esp32.panico)>0",
+            "priority": SEV_HIGH,
+            "required_keys": {"esp32.panico"},
+            "tags": [{"tag": "servico", "value": "seguranca-fisica"}],
+            "depends_on": ["offline"],
+        },
+        {
+            "slug": "invasao",
+            "description": f"[{host_name}] Invasão / violação detectada",
+            "expression": f"last(/{host_name}/esp32.invasoes)>0",
+            "priority": SEV_HIGH,
+            "required_keys": {"esp32.invasoes"},
+            "tags": [{"tag": "servico", "value": "seguranca-fisica"}],
+            "depends_on": ["offline"],
+        },
+        {
+            "slug": "porta",
+            "description": f"[{host_name}] Porta aberta por mais de {{$PORTA.TEMPO}}",
+            "expression": f'last(/{host_name}/esp32.porta)="ABERTA" and count(/{host_name}/esp32.porta,{{$PORTA.TEMPO}},"ne","ABERTA")=0',
+            "priority": SEV_AVERAGE,
+            "required_keys": {"esp32.porta"},
+            "tags": [{"tag": "servico", "value": "seguranca-fisica"}],
+            "depends_on": ["offline"],
+        },
+        {
+            "slug": "temp_crit",
+            "description": f"[{host_name}] Temperatura crítica acima de {{$TEMP.CRITICO}}°C",
+            "expression": f"min(/{host_name}/esp32.temp,1m)>{{$TEMP.CRITICO}}",
+            "priority": SEV_HIGH,
+            "required_keys": {"esp32.temp"},
+            "tags": [{"tag": "servico", "value": "climatizacao"}],
+            "depends_on": ["offline"],
+        },
+        {
+            "slug": "temp_warn",
+            "description": f"[{host_name}] Temperatura em alerta acima de {{$TEMP.ALERTA}}°C",
+            "expression": f"min(/{host_name}/esp32.temp,1m)>{{$TEMP.ALERTA}}",
+            "priority": SEV_WARNING,
+            "required_keys": {"esp32.temp"},
+            "tags": [{"tag": "servico", "value": "climatizacao"}],
+            "depends_on": ["offline", "temp_crit"],
         },
     ]
+
+    created_ids: Dict[str, str] = {}
 
     for trig in candidates:
         if not trig["required_keys"].issubset(available_keys):
@@ -383,10 +405,14 @@ def upsert_triggers(api: ZabbixAPI, host_id: str, host_name: str, topic: str) ->
             "output": ["triggerid", "description"],
         })
 
+        deps = [{"triggerid": created_ids[slug]} for slug in trig["depends_on"] if slug in created_ids]
+
         payload: Dict[str, Any] = {
             "description": trig["description"],
             "expression": trig["expression"],
             "priority": trig["priority"],
+            "tags": trig["tags"],
+            "dependencies": deps,
         }
 
         if existing:
@@ -398,6 +424,94 @@ def upsert_triggers(api: ZabbixAPI, host_id: str, host_name: str, topic: str) ->
             created = api.call("trigger.create", payload)
             tid = created["triggerids"][0]
             print(f"  [+] Trigger '{trig['description']}' criada (ID {tid})")
+
+        created_ids[trig["slug"]] = tid
+
+
+def _upsert_service(
+    api: ZabbixAPI,
+    name: str,
+    parents: Optional[List[Dict[str, str]]] = None,
+    tags: Optional[List[Dict[str, str]]] = None,
+    problem_tags: Optional[List[Dict[str, Any]]] = None,
+    sortorder: int = 0,
+) -> str:
+    """Cria ou atualiza um nó na árvore de Services do Zabbix 7.0."""
+    existing = api.call("service.get", {
+        "filter": {"name": name},
+        "output": ["serviceid", "name"],
+    })
+    payload: Dict[str, Any] = {
+        "name": name,
+        "algorithm": 1,
+        "sortorder": sortorder,
+        "parents": parents or [],
+        "tags": tags or [],
+        "problem_tags": problem_tags or [],
+    }
+    if existing:
+        sid = existing[0]["serviceid"]
+        payload["serviceid"] = sid
+        api.call("service.update", payload)
+        print(f"  [=] Service '{name}' atualizado (ID {sid})")
+        return sid
+
+    created = api.call("service.create", payload)
+    sid = created["serviceids"][0]
+    print(f"  [+] Service '{name}' criado (ID {sid})")
+    return sid
+
+
+def upsert_services_and_sla(api: ZabbixAPI) -> None:
+    """
+    Cria/atualiza de forma idempotente a árvore hierárquica de Services do CPD
+    e o SLA mensal (99.9%) vinculado ao serviço raiz.
+    """
+    print("\n--- Árvore de Services e SLA (Zabbix 7.0) ---")
+    root_id = _upsert_service(
+        api,
+        name="CPD - Infraestrutura Crítica",
+        tags=[{"tag": "cpd", "value": "core"}],
+        sortorder=1,
+    )
+
+    children = [
+        ("Climatização e Ambiente", "climatizacao", 1),
+        ("Segurança Física e Acesso", "seguranca-fisica", 2),
+        ("Conectividade e Telemetria MQTT", "conectividade", 3),
+    ]
+    for cname, tag_val, order in children:
+        _upsert_service(
+            api,
+            name=cname,
+            parents=[{"serviceid": root_id}],
+            problem_tags=[{"tag": "servico", "operator": 0, "value": tag_val}],
+            sortorder=order,
+        )
+
+    sla_name = "CPD - Disponibilidade Mensal 99.9%"
+    existing_sla = api.call("sla.get", {
+        "filter": {"name": sla_name},
+        "output": ["slaid", "name"],
+    })
+    sla_payload: Dict[str, Any] = {
+        "name": sla_name,
+        "slo": 99.9,
+        "period": 1,
+        "timezone": "America/Sao_Paulo",
+        "effective_date": 1704067200,
+        "status": 1,
+        "service_tags": [{"tag": "cpd", "operator": 0, "value": "core"}],
+    }
+    if existing_sla:
+        slaid = existing_sla[0]["slaid"]
+        sla_payload["slaid"] = slaid
+        api.call("sla.update", sla_payload)
+        print(f"  [=] SLA '{sla_name}' atualizado (ID {slaid})")
+    else:
+        created_sla = api.call("sla.create", sla_payload)
+        slaid = created_sla["slaids"][0]
+        print(f"  [+] SLA '{sla_name}' criado (ID {slaid})")
 
 
 def export_template(api: ZabbixAPI, host_id: str, path: str) -> None:
@@ -468,6 +582,8 @@ def main() -> None:
             upsert_macros(api, host_id, node["macros"])
             upsert_triggers(api, host_id, host_name, topic)
             export_template(api, host_id, node["export_file"])
+
+        upsert_services_and_sla(api)
 
         print()
         print("=" * 64)

@@ -199,3 +199,41 @@ def test_upsert_triggers_atualiza_em_reexecucao_idempotente():
     creates = [c.args[1] for c in api.call.call_args_list if c.args[0] == "trigger.create"]
     assert len(updates) == 1 and updates[0]["triggerid"] == "25232"
     assert len(creates) == 1 and creates[0]["description"] == desc_warn
+
+
+def test_upsert_triggers_configura_dependencies_hierarquicas():
+    topic = "elo5/esp32-rack-01/status"
+    master_key = f'mqtt_status.sh["{topic}"]'
+    api = _make_api_with_items([master_key, "esp32.temp", "esp32.invasoes"])
+    upsert_triggers(api, host_id="10685", host_name="esp32-rack-01", topic=topic)
+
+    creates = {c.args[1]["description"]: c.args[1] for c in api.call.call_args_list if c.args[0] == "trigger.create"}
+    offline_desc = "[esp32-rack-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}"
+    crit_desc = "[esp32-rack-01] Temperatura crítica acima de {$TEMP.CRITICO}°C"
+    warn_desc = "[esp32-rack-01] Temperatura em alerta acima de {$TEMP.ALERTA}°C"
+
+    assert offline_desc in creates
+    assert creates[offline_desc]["dependencies"] == []
+    assert creates[crit_desc]["dependencies"] == [{"triggerid": "30001"}]
+    assert creates[warn_desc]["dependencies"] == [{"triggerid": "30001"}, {"triggerid": "30003"}]
+
+
+def test_upsert_services_and_sla_cria_arvore_e_sla():
+    from configurar_zabbix import upsert_services_and_sla
+
+    api = MagicMock()
+    api.call.side_effect = [
+        [], {"serviceids": ["10"]},
+        [], {"serviceids": ["11"]},
+        [], {"serviceids": ["12"]},
+        [], {"serviceids": ["13"]},
+        [], {"slaids": ["1"]},
+    ]
+    upsert_services_and_sla(api)
+
+    methods = [c.args[0] for c in api.call.call_args_list]
+    assert methods.count("service.create") == 4
+    assert methods.count("sla.create") == 1
+    sla_payload = [c.args[1] for c in api.call.call_args_list if c.args[0] == "sla.create"][0]
+    assert sla_payload["slo"] == 99.9
+    assert sla_payload["service_tags"] == [{"tag": "cpd", "operator": 0, "value": "core"}]
