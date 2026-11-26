@@ -46,5 +46,13 @@ jobs:
             echo "$DB" | grep -Eq "^${target}:" || { echo "❌ Alvo obrigatório ausente no Makefile: ${target}"; exit 1; }
           done
 
+      - name: Validate Docker Compose configuration
+        run: |
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+          docker compose config --quiet
+          echo "✅ docker-compose.yml válido!"
+
       - name: Run make lint
         run: make lint
