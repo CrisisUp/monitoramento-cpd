@@ -29,3 +29,6 @@ certs/*.key
 certs/*.srl
 certs/
 .venv/
+
+# Relatórios locais da auditoria E2E
+reports/*.json

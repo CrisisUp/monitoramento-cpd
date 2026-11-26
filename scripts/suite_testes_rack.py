@@ -8,9 +8,10 @@ das triggers 25232 (Temperatura), 25235 (Porta Aberta) e 25236 (Invasão).
 import json
 import os
 import shutil
+from pathlib import Path
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import urllib.request
 
@@ -151,12 +152,89 @@ def wait_for_trigger(client: ZabbixClient, triggerid: str, expected_value: str, 
     )
 
 
+REPORT_DIR = Path(os.getenv("E2E_REPORT_DIR", "reports"))
+
+
+def export_e2e_report(
+    started_at_utc: datetime,
+    trigger_ids: list[str],
+    problems: list[dict],
+    recoveries: list[dict],
+    status: str,
+    error_message: str | None = None,
+) -> Path:
+    finished_at_utc = datetime.now(timezone.utc)
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+    prob_by_tid = {str(ev["objectid"]): ev for ev in problems}
+    ok_by_tid = {str(ev["objectid"]): ev for ev in recoveries}
+
+    triggers_summary = []
+    for tid in [str(t) for t in trigger_ids]:
+        ev_p = prob_by_tid.get(tid)
+        ev_o = ok_by_tid.get(tid)
+        p_clock = int(ev_p["clock"]) if ev_p else None
+        o_clock = int(ev_o["clock"]) if ev_o else None
+        triggers_summary.append(
+            {
+                "triggerid": tid,
+                "name": (ev_p or ev_o or {}).get("name", ""),
+                "problem_eventid": str(ev_p["eventid"]) if ev_p else None,
+                "problem_timestamp_utc": (
+                    datetime.fromtimestamp(p_clock, tz=timezone.utc).isoformat()
+                    if p_clock is not None
+                    else None
+                ),
+                "ok_eventid": str(ev_o["eventid"]) if ev_o else None,
+                "ok_timestamp_utc": (
+                    datetime.fromtimestamp(o_clock, tz=timezone.utc).isoformat()
+                    if o_clock is not None
+                    else None
+                ),
+                "recovery_seconds": (
+                    o_clock - p_clock
+                    if (p_clock is not None and o_clock is not None)
+                    else None
+                ),
+            }
+        )
+
+    payload = {
+        "schema_version": "1.0",
+        "host": HOST_NAME,
+        "status": status,
+        "started_at_utc": started_at_utc.isoformat(),
+        "finished_at_utc": finished_at_utc.isoformat(),
+        "duration_seconds": round((finished_at_utc - started_at_utc).total_seconds(), 2),
+        "error": error_message,
+        "summary": {
+            "total_triggers": len(triggers_summary),
+            "passed": sum(
+                1 for t in triggers_summary if t["problem_eventid"] and t["ok_eventid"]
+            ),
+            "failed": sum(
+                1 for t in triggers_summary if not (t["problem_eventid"] and t["ok_eventid"])
+            ),
+        },
+        "triggers": triggers_summary,
+    }
+
+    stamp = finished_at_utc.strftime("%Y%m%d_%H%M%S")
+    history_file = REPORT_DIR / f"e2e_{stamp}.json"
+    latest_file = REPORT_DIR / "e2e_latest.json"
+    rendered = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    history_file.write_text(rendered, encoding="utf-8")
+    latest_file.write_text(rendered, encoding="utf-8")
+    return history_file
+
+
 def audit_generated_events(
     rpc_client,
     trigger_ids: list[str],
     time_from: int,
     wait_timeout: float = 5.0,
-) -> None:
+    started_at_utc: datetime | None = None,
+) -> Path:
     """Consulta event.get no Zabbix, imprime os eventids e falha se faltar PROBLEM ou OK."""
     expected = {str(tid) for tid in trigger_ids}
     deadline = time.monotonic() + wait_timeout
@@ -216,24 +294,35 @@ def audit_generated_events(
                 f"| hora={ts} | {ev.get('name', '')}"
             )
 
+    ref_start = started_at_utc or datetime.fromtimestamp(time_from, tz=timezone.utc)
     if missing_problem or missing_ok:
         detalhes = []
         if missing_problem:
             detalhes.append(f"sem PROBLEM: {', '.join(missing_problem)}")
         if missing_ok:
             detalhes.append(f"sem OK: {', '.join(missing_ok)}")
-        raise RuntimeError(
-            "Auditoria de eventos Zabbix incompleta (" + " | ".join(detalhes) + ")"
+        err_msg = "Auditoria de eventos Zabbix incompleta (" + " | ".join(detalhes) + ")"
+        report_path = export_e2e_report(
+            ref_start, trigger_ids, problems, recoveries, status="FAIL", error_message=err_msg
         )
+        print(f"[RELATÓRIO] Histórico salvo em: {report_path}")
+        raise RuntimeError(err_msg)
 
+    report_path = export_e2e_report(
+        ref_start, trigger_ids, problems, recoveries, status="PASS"
+    )
     print(
         "[OK] Auditoria de eventos validada: PROBLEM e OK confirmados para "
         + ", ".join(sorted(expected))
     )
+    print(f"[RELATÓRIO] Histórico JSON salvo em: {report_path} (e {REPORT_DIR / 'e2e_latest.json'})")
+    return report_path
 
 
 def main() -> int:
+    started_at_utc = datetime.now(timezone.utc)
     suite_started_at = int(time.time()) - 5
+    report_written = False
     print("=" * 72)
     print(f"SUÍTE DE TESTES RACK CPD — {HOST_NAME} (mTLS {MQTT_PORT} + Zabbix 7.0)")
     print("=" * 72)
@@ -329,11 +418,23 @@ def main() -> int:
             client,
             [str(TRIGGER_TEMP_ID), str(TRIGGER_PORTA_ID), str(TRIGGER_INVASAO_ID)],
             suite_started_at,
+            started_at_utc=started_at_utc,
         )
+        report_written = True
         print("=" * 72)
         return 0
 
     except Exception as exc:
+        if not report_written:
+            report_path = export_e2e_report(
+                started_at_utc,
+                [str(TRIGGER_TEMP_ID), str(TRIGGER_PORTA_ID), str(TRIGGER_INVASAO_ID)],
+                [],
+                [],
+                status="FAIL",
+                error_message=str(exc),
+            )
+            print(f"[RELATÓRIO] Histórico de falha salvo em: {report_path}", file=sys.stderr)
         print(f"\n[FALHA NA SUÍTE] {exc}", file=sys.stderr)
         return 1
 
