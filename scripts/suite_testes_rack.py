@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""
+Suíte de Testes Ponta a Ponta (E2E) — Rack CPD (esp32-rack-01)
+Valida ingestão MQTT mTLS (8883), itens dependentes no Zabbix 7.0 e disparo/recuperação
+das triggers 25232 (Temperatura), 25235 (Porta Aberta) e 25236 (Invasão).
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+
+ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080/api_jsonrpc.php")
+ZABBIX_USER = os.getenv("ZABBIX_USER", "Admin")
+ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD", "zabbix")
+ZABBIX_TOKEN = os.getenv("ZABBIX_TOKEN", "").strip()
+HOST_NAME = os.getenv("ZABBIX_HOST", "esp32-rack-01")
+
+MQTT_CONTAINER = os.getenv("MQTT_CONTAINER", "cpd-mosquitto")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
+MQTT_TOPIC = os.getenv("MQTT_TOPIC", "elo5/esp32-rack-01/status")
+
+CONTAINER_CA_FILE = "/mosquitto/certs/ca.crt"
+CONTAINER_CERT_FILE = "/mosquitto/certs/zabbix-client.crt"
+CONTAINER_KEY_FILE = "/mosquitto/certs/zabbix-client.key"
+
+TEST_HIGH_TEMP = float(os.getenv("TEST_HIGH_TEMP", "34.5"))
+POLL_TIMEOUT_SEC = int(os.getenv("POLL_TIMEOUT_SEC", "60"))
+POLL_INTERVAL_SEC = 3
+
+TRIGGER_TEMP_ID = os.getenv("TRIGGER_TEMP_ID", "25232")
+TRIGGER_PORTA_ID = os.getenv("TRIGGER_PORTA_ID", "25235")
+TRIGGER_INVASAO_ID = os.getenv("TRIGGER_INVASAO_ID", "25236")
+
+BASELINE_PAYLOAD = {
+    "device_id": "esp32-rack-01",
+    "temp_c": 23.4,
+    "umid_pct": 47.5,
+    "porta": "FECHADA",
+    "modo": "ARMADO",
+    "estado": "NORMAL",
+    "dist_cm": 85.0,
+    "invasoes": 0,
+    "ambiente": "CPD_PRINCIPAL",
+    "luz": "CLARO",
+    "simulated": True,
+}
+
+
+class ZabbixClient:
+    def __init__(self, url: str, user: str, password: str, token: str = ""):
+        self.url = url if url.endswith("/api_jsonrpc.php") else f"{url.rstrip('/')}/api_jsonrpc.php"
+        self.user = user
+        self.password = password
+        self.token = token
+        self._req_id = 0
+
+    def call(self, method: str, params: dict, auth: bool = True):
+        self._req_id += 1
+        payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": self._req_id}
+        headers = {"Content-Type": "application/json-rpc"}
+        if auth and self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        req = urllib.request.Request(
+            self.url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+
+        if "error" in body:
+            raise RuntimeError(f"Erro API Zabbix ({method}): {body['error']}")
+        return body["result"]
+
+    def login(self) -> None:
+        if self.token:
+            # Valida se o token configurado está ativo
+            try:
+                self.call("host.get", {"output": ["hostid"], "limit": 1}, auth=True)
+                return
+            except Exception:
+                self.token = ""
+        self.token = self.call(
+            "user.login",
+            {"username": self.user, "password": self.password},
+            auth=False,
+        )
+
+
+def publish_mqtt(payload_dict: dict, retain: bool = True) -> None:
+    if not shutil.which("docker"):
+        raise RuntimeError("Binário 'docker' não encontrado no PATH.")
+
+    raw_json = json.dumps(payload_dict, separators=(",", ":"))
+    cmd = [
+        "docker", "exec", MQTT_CONTAINER,
+        "mosquitto_pub",
+        "-h", "localhost",
+        "-p", str(MQTT_PORT),
+    ]
+    if MQTT_PORT == 8883:
+        cmd.extend([
+            "--cafile", CONTAINER_CA_FILE,
+            "--cert", CONTAINER_CERT_FILE,
+            "--key", CONTAINER_KEY_FILE,
+        ])
+    cmd.extend(["-t", MQTT_TOPIC, "-m", raw_json])
+    if retain:
+        cmd.append("-r")
+
+    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=15)
+
+
+def wait_for_item(client: ZabbixClient, itemid: str, predicate, label: str, timeout: int = POLL_TIMEOUT_SEC) -> str:
+    deadline = time.time() + timeout
+    last_val = None
+    while time.time() < deadline:
+        res = client.call("item.get", {"output": ["itemid", "lastvalue"], "itemids": [itemid]})
+        if res:
+            last_val = res[0].get("lastvalue")
+            if last_val is not None and predicate(last_val):
+                return str(last_val)
+        time.sleep(POLL_INTERVAL_SEC)
+    raise TimeoutError(f"Timeout ({timeout}s) aguardando {label} (itemid={itemid}, último valor={last_val!r})")
+
+
+def wait_for_trigger(client: ZabbixClient, triggerid: str, expected_value: str, label: str, timeout: int = POLL_TIMEOUT_SEC) -> str:
+    """expected_value: '1' para PROBLEM, '0' para OK."""
+    deadline = time.time() + timeout
+    last_state = None
+    state_name = "PROBLEM (1)" if expected_value == "1" else "OK (0)"
+    while time.time() < deadline:
+        res = client.call(
+            "trigger.get",
+            {"output": ["triggerid", "description", "value"], "triggerids": [triggerid]},
+        )
+        if res:
+            last_state = str(res[0].get("value"))
+            if last_state == expected_value:
+                return last_state
+        time.sleep(POLL_INTERVAL_SEC)
+    raise TimeoutError(
+        f"Timeout ({timeout}s) aguardando trigger {triggerid} ({label}) -> {state_name} (atual={last_state!r})"
+    )
+
+
+def main() -> int:
+    print("=" * 72)
+    print(f"SUÍTE DE TESTES RACK CPD — {HOST_NAME} (mTLS {MQTT_PORT} + Zabbix 7.0)")
+    print("=" * 72)
+
+    client = ZabbixClient(ZABBIX_URL, ZABBIX_USER, ZABBIX_PASSWORD, ZABBIX_TOKEN)
+
+    try:
+        # [1/6] Autenticação
+        client.login()
+        print("[1/6] Autenticação na API do Zabbix: OK")
+
+        # [2/6] Mapeamento de itens
+        items = client.call(
+            "item.get",
+            {
+                "output": ["itemid", "key_", "name"],
+                "host": HOST_NAME,
+            },
+        )
+        by_key = {it["key_"]: it["itemid"] for it in items}
+        required_keys = ["esp32.temp", "esp32.umid", "esp32.porta", "esp32.distancia", "esp32.invasoes"]
+        missing = [k for k in required_keys if k not in by_key]
+        if missing:
+            raise RuntimeError(f"Itens ausentes no host {HOST_NAME}: {missing}")
+
+        id_temp = by_key["esp32.temp"]
+        id_umid = by_key["esp32.umid"]
+        id_porta = by_key["esp32.porta"]
+        id_dist = by_key["esp32.distancia"]
+        id_inv = by_key["esp32.invasoes"]
+        print(
+            f"[2/6] Itens mapeados: temp={id_temp}(esp32.temp), umid={id_umid}(esp32.umid), "
+            f"porta={id_porta}(esp32.porta), dist={id_dist}(esp32.distancia), invasoes={id_inv}(esp32.invasoes)"
+        )
+
+        # Garante estado inicial limpo antes de iniciar os cenários
+        publish_mqtt(BASELINE_PAYLOAD, retain=True)
+        wait_for_item(client, id_porta, lambda v: str(v).strip() == "FECHADA", "baseline porta=FECHADA")
+        wait_for_item(client, id_inv, lambda v: int(float(v)) == 0, "baseline invasoes=0")
+
+        # [3/6] Cenário 1: Temperatura Crítica -> Trigger 25232 PROBLEM
+        payload_temp = {**BASELINE_PAYLOAD, "temp_c": TEST_HIGH_TEMP, "estado": "ALERTA_TEMP"}
+        publish_mqtt(payload_temp, retain=True)
+        val_t = wait_for_item(
+            client, id_temp, lambda v: abs(float(v) - TEST_HIGH_TEMP) < 0.2, f"esp32.temp≈{TEST_HIGH_TEMP}"
+        )
+        wait_for_trigger(client, TRIGGER_TEMP_ID, "1", "Temperatura Crítica")
+        print(f"[3/6] Temperatura crítica ({val_t}°C) + Trigger {TRIGGER_TEMP_ID} -> PROBLEM: OK")
+
+        # [4/6] Cenário 2: Porta Aberta -> Trigger 25235 PROBLEM + Recuperação Trigger 25232 OK
+        payload_porta = {**BASELINE_PAYLOAD, "porta": "ABERTA", "estado": "PORTA_ABERTA"}
+        publish_mqtt(payload_porta, retain=True)
+        val_p = wait_for_item(client, id_porta, lambda v: str(v).strip() == "ABERTA", "esp32.porta=ABERTA")
+        wait_for_trigger(client, TRIGGER_PORTA_ID, "1", "Porta Aberta")
+        wait_for_trigger(client, TRIGGER_TEMP_ID, "0", "Temperatura Crítica (recuperação)")
+        print(
+            f"[4/6] Porta ({val_p}) + Trigger {TRIGGER_PORTA_ID} -> PROBLEM "
+            f"| Trigger {TRIGGER_TEMP_ID} -> OK: OK"
+        )
+
+        # [5/6] Cenário 3: Proximidade + Invasão -> Trigger 25236 PROBLEM
+        payload_inv = {
+            **BASELINE_PAYLOAD,
+            "porta": "ABERTA",
+            "dist_cm": 18.0,
+            "invasoes": 1,
+            "estado": "INVASAO",
+        }
+        publish_mqtt(payload_inv, retain=True)
+        val_d = wait_for_item(client, id_dist, lambda v: abs(float(v) - 18.0) < 0.5, "esp32.distancia≈18.0")
+        val_i = wait_for_item(client, id_inv, lambda v: int(float(v)) == 1, "esp32.invasoes=1")
+        wait_for_trigger(client, TRIGGER_INVASAO_ID, "1", "Invasão Física")
+        print(
+            f"[5/6] Distância ({val_d}cm) + Invasões ({val_i}) + Trigger {TRIGGER_INVASAO_ID} -> PROBLEM: OK"
+        )
+
+        # [6/6] Restauração Baseline -> Recuperação Triggers 25232, 25235 e 25236 para OK
+        publish_mqtt(BASELINE_PAYLOAD, retain=True)
+        wait_for_item(client, id_temp, lambda v: abs(float(v) - 23.4) < 0.2, "restore esp32.temp=23.4")
+        wait_for_item(client, id_porta, lambda v: str(v).strip() == "FECHADA", "restore esp32.porta=FECHADA")
+        wait_for_item(client, id_inv, lambda v: int(float(v)) == 0, "restore esp32.invasoes=0")
+        wait_for_trigger(client, TRIGGER_TEMP_ID, "0", "Temperatura Crítica (OK)")
+        wait_for_trigger(client, TRIGGER_PORTA_ID, "0", "Porta Aberta (OK)")
+        wait_for_trigger(client, TRIGGER_INVASAO_ID, "0", "Invasão Física (OK)")
+        print(
+            f"[6/6] Baseline restaurado + Triggers {TRIGGER_TEMP_ID}, {TRIGGER_PORTA_ID}, "
+            f"{TRIGGER_INVASAO_ID} -> OK: OK"
+        )
+
+        print("=" * 72)
+        print("RESULTADO FINAL: TODOS OS 6 ESTÁGIOS APROVADOS COM SUCESSO")
+        print("=" * 72)
+        return 0
+
+    except Exception as exc:
+        print(f"\n[FALHA NA SUÍTE] {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
