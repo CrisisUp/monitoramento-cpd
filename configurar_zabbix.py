@@ -26,7 +26,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080").rstrip("/")
+def _normalize_zabbix_url(raw_url: str) -> str:
+    """Normaliza ZABBIX_URL para a raiz (sem barra final nem /api_jsonrpc.php)."""
+    cleaned = raw_url.strip().rstrip("/")
+    if cleaned.endswith("/api_jsonrpc.php"):
+        cleaned = cleaned[: -len("/api_jsonrpc.php")].rstrip("/")
+    return cleaned or "http://localhost:8080"
+
+
+ZABBIX_URL = _normalize_zabbix_url(os.getenv("ZABBIX_URL", "http://localhost:8080"))
 ZABBIX_USER = os.getenv("ZABBIX_USER", "Admin")
 ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD", "zabbix")
 API_URL = f"{ZABBIX_URL}/api_jsonrpc.php"

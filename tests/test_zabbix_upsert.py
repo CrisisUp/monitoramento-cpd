@@ -237,3 +237,20 @@ def test_upsert_services_and_sla_cria_arvore_e_sla():
     sla_payload = [c.args[1] for c in api.call.call_args_list if c.args[0] == "sla.create"][0]
     assert sla_payload["slo"] == 99.9
     assert sla_payload["service_tags"] == [{"tag": "cpd", "operator": 0, "value": "core"}]
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("http://localhost:8080", "http://localhost:8080"),
+        ("http://localhost:8080/", "http://localhost:8080"),
+        ("http://localhost:8080/api_jsonrpc.php", "http://localhost:8080"),
+        ("http://localhost:8080/api_jsonrpc.php/", "http://localhost:8080"),
+        ("https://zabbix.cpd.local/zabbix/api_jsonrpc.php", "https://zabbix.cpd.local/zabbix"),
+        ("", "http://localhost:8080"),
+    ],
+)
+def test_normalize_zabbix_url(raw, expected):
+    from configurar_zabbix import _normalize_zabbix_url
+
+    assert _normalize_zabbix_url(raw) == expected
