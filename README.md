@@ -2,6 +2,8 @@
 
 [![Lint & Unit Tests](https://github.com/CrisisUp/monitoramento-cpd/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/CrisisUp/monitoramento-cpd/actions/workflows/lint.yml)
 
+
+> 📖 **História e Evolução Arquitetural:** Leia [docs/JORNADA.md](docs/JORNADA.md) para acompanhar a narrativa completa de como o projeto evoluiu de um único ESP32 na bancada até a observabilidade crítica com mTLS, IaC, CI/CD, Trigger Dependencies e SLA de 99.9%.
 Stack de monitoramento, seguranca fisica e observabilidade para o CPD, integrada via ponte MQTT mTLS (:8883) a arquitetura distribuida do Elo5System2 (elo5-mosquitto nos topicos elo5/esp32-porta-01/status e elo5/esp32-rack-01/status).
 
 ## Arquitetura e Fluxo de Dados
