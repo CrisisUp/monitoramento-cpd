@@ -329,6 +329,7 @@ def main() -> int:
 
     client = ZabbixClient(ZABBIX_URL, ZABBIX_USER, ZABBIX_PASSWORD, ZABBIX_TOKEN)
 
+    baseline_restored = True
     try:
         # [1/6] Autenticação
         client.login()
@@ -364,6 +365,7 @@ def main() -> int:
         wait_for_item(client, id_inv, lambda v: int(float(v)) == 0, "baseline invasoes=0")
 
         # [3/6] Cenário 1: Temperatura Crítica -> Trigger 25232 PROBLEM
+        baseline_restored = False
         payload_temp = {**BASELINE_PAYLOAD, "temp_c": TEST_HIGH_TEMP, "estado": "ALERTA_TEMP"}
         publish_mqtt(payload_temp, retain=True)
         val_t = wait_for_item(
@@ -401,6 +403,7 @@ def main() -> int:
 
         # [6/6] Restauração Baseline -> Recuperação Triggers 25232, 25235 e 25236 para OK
         publish_mqtt(BASELINE_PAYLOAD, retain=True)
+        baseline_restored = True
         wait_for_item(client, id_temp, lambda v: abs(float(v) - 23.4) < 0.2, "restore esp32.temp=23.4")
         wait_for_item(client, id_porta, lambda v: str(v).strip() == "FECHADA", "restore esp32.porta=FECHADA")
         wait_for_item(client, id_inv, lambda v: int(float(v)) == 0, "restore esp32.invasoes=0")
@@ -437,6 +440,14 @@ def main() -> int:
             print(f"[RELATÓRIO] Histórico de falha salvo em: {report_path}", file=sys.stderr)
         print(f"\n[FALHA NA SUÍTE] {exc}", file=sys.stderr)
         return 1
+
+    finally:
+        if not baseline_restored:
+            try:
+                publish_mqtt(BASELINE_PAYLOAD, retain=True)
+                print("[CLEANUP] Payload baseline retido restaurado no MQTT via finally.", file=sys.stderr)
+            except Exception as cleanup_exc:
+                print(f"[CLEANUP] Falha ao restaurar payload baseline no MQTT: {cleanup_exc}", file=sys.stderr)
 
 if __name__ == "__main__":
     sys.exit(main())
