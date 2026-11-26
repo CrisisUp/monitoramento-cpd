@@ -39,7 +39,7 @@ help:
 	@echo "========================================================================"
 	@echo " Ciclo de Vida da Stack:"
 	@echo "  make setup          - Primeira vez: cria .env, sobe stack e roda IaC"
-	@echo "  make sync-triggers  - Sincroniza macro {$TEMP.CRITICO} e triggers (25232, 25235, 25236) no Zabbix"
+	@echo "  make sync-triggers  - Sincroniza macro {\$$TEMP.CRITICO} e triggers (25232, 25235, 25236) no Zabbix"
 	@echo "  make up           - Sobe todos os containers em background"
 	@echo "  make down         - Para a stack (mantém volumes persistentes)"
 	@echo "  make restart      - Reinicia os containers da stack"
