@@ -82,16 +82,16 @@ services:
         condition: service_healthy
     networks:
       - cpd-net
+
+  # ---------------------------------------------------------------
+  # Zabbix Web — interface + API
+  # ---------------------------------------------------------------
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/10051' >/dev/null 2>&1 || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 15s
-
-  # ---------------------------------------------------------------
-  # Zabbix Web — interface + API
-  # ---------------------------------------------------------------
   zabbix-web:
     image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
     container_name: cpd-zabbix-web
@@ -156,6 +156,13 @@ services:
       - '--web.enable-lifecycle'
     networks:
       - cpd-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   mosquitto-exporter:
     image: jryberg/mosquitto-exporter:v0.7.9
     container_name: cpd-mosquitto-exporter
