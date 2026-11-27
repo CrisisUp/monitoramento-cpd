@@ -24,6 +24,12 @@ services:
     networks:
       - cpd-net
       - elo5-net
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 2 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 
   # ---------------------------------------------------------------
@@ -80,6 +86,12 @@ services:
   # ---------------------------------------------------------------
   # Zabbix Web — interface + API
   # ---------------------------------------------------------------
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 2 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
   zabbix-web:
     image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
     container_name: cpd-zabbix-web

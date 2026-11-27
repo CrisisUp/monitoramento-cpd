@@ -21,11 +21,15 @@ for f in "$CA_FILE" "$CERT_FILE" "$KEY_FILE"; do
   fi
 done
 
-mosquitto_sub -h "$HOST" -p "$PORT" \
+OUT="$(mosquitto_sub -h "$HOST" -p "$PORT" \
   --cafile "$CA_FILE" \
   --cert "$CERT_FILE" \
   --key "$KEY_FILE" \
-  -t "$TOPIC" -C 1 -W 2
+  -t "$TOPIC" -C 1 -W 1 2>/dev/null || true)"
+
+if [ -n "$OUT" ] && [ "$OUT" != "Timed out" ]; then
+  printf '%s\n' "$OUT"
+fi
 SCRIPT
 
 RUN chmod 755 /usr/lib/zabbix/externalscripts/mqtt_status.sh && \

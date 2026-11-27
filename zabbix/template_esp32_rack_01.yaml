@@ -1,7 +1,7 @@
 zabbix_export:
   version: '7.0'
   host_groups:
-    - uuid: 5bf6780c08c048708cabf6275dd8ccd0
+    - uuid: 6dcfbb475d3c406ba23c13fb6b322d2a
       name: CPD
   hosts:
     - host: esp32-rack-01
@@ -63,6 +63,12 @@ zabbix_export:
             - expression: last(/esp32-rack-01/esp32.invasoes)>0
               name: '[esp32-rack-01] Invasão / violação detectada'
               priority: HIGH
+              dependencies:
+                - name: '[esp32-rack-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+                  expression: 'nodata(/esp32-rack-01/mqtt_status.sh["elo5/esp32-rack-01/status"],{$ESP32.SEM_DADOS})=1'
+              tags:
+                - tag: servico
+                  value: seguranca-fisica
         - name: Luminosidade
           type: DEPENDENT
           key: esp32.luz
@@ -104,6 +110,12 @@ zabbix_export:
             - expression: 'last(/esp32-rack-01/esp32.porta)="ABERTA" and count(/esp32-rack-01/esp32.porta,{$PORTA.TEMPO},"ne","ABERTA")=0'
               name: '[esp32-rack-01] Porta aberta por mais de {$PORTA.TEMPO}'
               priority: AVERAGE
+              dependencies:
+                - name: '[esp32-rack-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+                  expression: 'nodata(/esp32-rack-01/mqtt_status.sh["elo5/esp32-rack-01/status"],{$ESP32.SEM_DADOS})=1'
+              tags:
+                - tag: servico
+                  value: seguranca-fisica
         - name: Temperatura
           type: DEPENDENT
           key: esp32.temp
@@ -120,9 +132,23 @@ zabbix_export:
             - expression: 'min(/esp32-rack-01/esp32.temp,1m)>{$TEMP.CRITICO}'
               name: '[esp32-rack-01] Temperatura crítica acima de {$TEMP.CRITICO}°C'
               priority: HIGH
+              dependencies:
+                - name: '[esp32-rack-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+                  expression: 'nodata(/esp32-rack-01/mqtt_status.sh["elo5/esp32-rack-01/status"],{$ESP32.SEM_DADOS})=1'
+              tags:
+                - tag: servico
+                  value: climatizacao
             - expression: 'min(/esp32-rack-01/esp32.temp,1m)>{$TEMP.ALERTA}'
               name: '[esp32-rack-01] Temperatura em alerta acima de {$TEMP.ALERTA}°C'
               priority: WARNING
+              dependencies:
+                - name: '[esp32-rack-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+                  expression: 'nodata(/esp32-rack-01/mqtt_status.sh["elo5/esp32-rack-01/status"],{$ESP32.SEM_DADOS})=1'
+                - name: '[esp32-rack-01] Temperatura crítica acima de {$TEMP.CRITICO}°C'
+                  expression: 'min(/esp32-rack-01/esp32.temp,1m)>{$TEMP.CRITICO}'
+              tags:
+                - tag: servico
+                  value: climatizacao
         - name: Umidade
           type: DEPENDENT
           key: esp32.umid
@@ -145,6 +171,9 @@ zabbix_export:
             - expression: 'nodata(/esp32-rack-01/mqtt_status.sh["elo5/esp32-rack-01/status"],{$ESP32.SEM_DADOS})=1'
               name: '[esp32-rack-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
               priority: AVERAGE
+              tags:
+                - tag: servico
+                  value: conectividade
       macros:
         - macro: '{$ESP32.SEM_DADOS}'
           value: 2m

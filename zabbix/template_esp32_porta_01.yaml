@@ -1,7 +1,7 @@
 zabbix_export:
   version: '7.0'
   host_groups:
-    - uuid: 5bf6780c08c048708cabf6275dd8ccd0
+    - uuid: 6dcfbb475d3c406ba23c13fb6b322d2a
       name: CPD
   hosts:
     - host: esp32-porta-01
@@ -49,6 +49,12 @@ zabbix_export:
             - expression: last(/esp32-porta-01/esp32.panico)>0
               name: '[esp32-porta-01] Botão de pânico acionado'
               priority: HIGH
+              dependencies:
+                - name: '[esp32-porta-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+                  expression: 'nodata(/esp32-porta-01/mqtt_status.sh["elo5/esp32-porta-01/status"],{$ESP32.SEM_DADOS})=1'
+              tags:
+                - tag: servico
+                  value: seguranca-fisica
         - name: 'Porta Sala'
           type: DEPENDENT
           key: esp32.porta
@@ -65,6 +71,12 @@ zabbix_export:
             - expression: 'last(/esp32-porta-01/esp32.porta)="ABERTA" and count(/esp32-porta-01/esp32.porta,{$PORTA.TEMPO},"ne","ABERTA")=0'
               name: '[esp32-porta-01] Porta aberta por mais de {$PORTA.TEMPO}'
               priority: AVERAGE
+              dependencies:
+                - name: '[esp32-porta-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
+                  expression: 'nodata(/esp32-porta-01/mqtt_status.sh["elo5/esp32-porta-01/status"],{$ESP32.SEM_DADOS})=1'
+              tags:
+                - tag: servico
+                  value: seguranca-fisica
         - name: 'Presença PIR'
           type: DEPENDENT
           key: esp32.presenca
@@ -100,6 +112,9 @@ zabbix_export:
             - expression: 'nodata(/esp32-porta-01/mqtt_status.sh["elo5/esp32-porta-01/status"],{$ESP32.SEM_DADOS})=1'
               name: '[esp32-porta-01] Sem telemetria MQTT há {$ESP32.SEM_DADOS}'
               priority: AVERAGE
+              tags:
+                - tag: servico
+                  value: conectividade
       macros:
         - macro: '{$ESP32.SEM_DADOS}'
           value: 2m
